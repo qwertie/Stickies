@@ -82,7 +82,8 @@ The email section can be switched off with `"enabled": false` under `email` in `
 "is this email from a human and does it need me?" judgement. This uses the
 [Claude Code](https://claude.com/claude-code) command-line tool, `claude`, which must be installed
 and logged in on this PC. Without it the script still writes a note, just as an unfiltered listing.
-`claudeModel` in `config.json` chooses the model; `sonnet` is fast and cheap enough for this.
+`claudeModel` and `claudeEffort` in `config.json` choose the model and reasoning effort; the defaults
+are the latest Opus at medium effort. `sonnet` is a cheaper alternative if the report is simple.
 
 **When the login expires** (it does, every few weeks), the report still appears, as an unfiltered
 listing, but it opens with a callout and an attachment named `fix-claude-login.cmd`. Double-click

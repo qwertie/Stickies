@@ -1,6 +1,7 @@
 {
   "dataDir": null,
-  "claudeModel": "sonnet",
+  "claudeModel": "opus",
+  "claudeEffort": "medium",
   "repos": ["C:\\Dev\\Barreleye"],
   "t3WorktreesRoot": "%USERPROFILE%\\.t3\\worktrees",
   "ado": {

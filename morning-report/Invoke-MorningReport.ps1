@@ -230,22 +230,32 @@ function Invoke-Claude([string]$RawJson) {
         Add-Failure 'Claude' 'not signed in (login expired)'
         return $null
     }
-    # claude speaks UTF-8 on both pipes; Windows PowerShell defaults to the ANSI code page.
-    [Console]::OutputEncoding = [Text.Encoding]::UTF8
-    $OutputEncoding = [Text.Encoding]::UTF8
+    # claude speaks UTF-8; Windows PowerShell pipes re-decode native output as ANSI and mangle
+    # anything beyond ASCII (em-dashes became "â€”"). Go through files instead, which cmd.exe
+    # passes byte-for-byte.
     $fence = [string][char]96 * 3
     $prompt = (Get-Content "$PSScriptRoot\prompt.md" -Raw -Encoding UTF8) + "`n`n" + $fence + "json`n" + $RawJson + "`n" + $fence
-    $output = $prompt | & $claude.Source -p --output-format text --model $config.claudeModel 2>&1
-    if ($LASTEXITCODE -ne 0 -or -not "$output".Trim()) {
+    $tmp = Join-Path $env:TEMP ("stickies-report-" + [guid]::NewGuid().ToString('N'))
+    $utf8 = [Text.UTF8Encoding]::new($false)
+    [IO.File]::WriteAllText("$tmp.in.md", $prompt, $utf8)
+    $effort = if ($config.claudeEffort) { "--effort $($config.claudeEffort)" } else { '' }
+    $cmdLine = '"{0}" -p --output-format text --model {1} {2} < "{3}.in.md" > "{3}.out.md" 2> "{3}.err.txt"' -f $claude.Source, $config.claudeModel, $effort, $tmp
+    & cmd.exe /d /c $cmdLine
+    $exit = $LASTEXITCODE
+    $output = if (Test-Path "$tmp.out.md") { [IO.File]::ReadAllText("$tmp.out.md", $utf8) } else { '' }
+    $errText = if (Test-Path "$tmp.err.txt") { [IO.File]::ReadAllText("$tmp.err.txt", $utf8) } else { '' }
+    Remove-Item "$tmp.*" -ErrorAction SilentlyContinue
+    if ($exit -ne 0 -or -not $output.Trim()) {
+        $output = "$output`n$errText"
         if ("$output" -match 'log ?in|authenticat|Invalid API key|OAuth|token.*(expired|invalid)|401') {
             $script:ClaudeNeedsLogin = $true
             Add-Failure 'Claude' 'sign-in rejected (login expired)'
         } else {
-            Add-Failure 'Claude' "claude -p exited with $LASTEXITCODE`: $output"
+            Add-Failure 'Claude' "claude -p exited with $exit`: $($output.Trim())"
         }
         return $null
     }
-    return ($output -join "`n")
+    return $output
 }
 
 function Format-Fallback($raw) {
