@@ -25,8 +25,9 @@ async function showCornerMenu() {
   const item = (text: string, command: string) => MenuItem.new({ text, action: () => void invoke(command) });
   const menu = await Menu.new({
     items: await Promise.all([
-      item('New note', 'create_note'),
-      item('Bring all notes to front', 'raise_all'),
+      item('New note (double-click)', 'create_note'),
+      item('Bring all notes to front (click)', 'raise_all'),
+      item('Show newest note (hover)', 'focus_latest'),
       PredefinedMenuItem.new({ item: 'Separator' }),
       item('Quit Stickies', 'quit_app'),
     ]),
