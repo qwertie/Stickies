@@ -82,7 +82,6 @@ pub fn run() {
             read_clipboard_for_paste,
             copy_to_clipboard,
             open_in_explorer,
-            open_speech_settings,
             save_layout,
             raise_all,
             focus_latest,
@@ -90,8 +89,7 @@ pub fn run() {
             save_settings,
             open_options,
             show_app_menu,
-            start_dictation,
-            stop_dictation,
+            toggle_dictation,
             quit_app,
         ])
         .setup(|app| {
@@ -248,11 +246,6 @@ fn open_in_explorer(state: State<AppState>, folder: String, rel: Option<String>)
 }
 
 #[tauri::command]
-fn open_speech_settings() -> Result<(), String> {
-    tauri_plugin_opener::open_url("ms-settings:privacy-speech", None::<&str>).map_err(|e| e.to_string())
-}
-
-#[tauri::command]
 fn get_settings(state: State<AppState>) -> Config {
     state.store.config()
 }
@@ -321,13 +314,8 @@ fn quit_app(app: AppHandle) {
 }
 
 #[tauri::command]
-fn start_dictation(app: AppHandle, label: String) -> Result<(), String> {
-    speech::start(app, label)
-}
-
-#[tauri::command]
-fn stop_dictation() {
-    speech::stop();
+fn toggle_dictation() -> Result<(), String> {
+    speech::toggle_voice_typing()
 }
 
 fn spawn_monitor_poll(app: AppHandle) {

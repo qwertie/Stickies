@@ -18,7 +18,7 @@ if (boot.corner) {
 } else if (boot.folder && boot.label) {
   root.render(
     <React.StrictMode>
-      <NoteApp folder={boot.folder} label={boot.label} />
+      <NoteApp folder={boot.folder} />
     </React.StrictMode>,
   );
 } else {

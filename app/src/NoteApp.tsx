@@ -2,7 +2,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { getCurrentWebview } from '@tauri-apps/api/webview';
 import { getCurrentWindow } from '@tauri-apps/api/window';
-import { ask } from '@tauri-apps/plugin-dialog';
+import { message } from '@tauri-apps/plugin-dialog';
 import type { Editor } from '@tiptap/core';
 import { EditorContent, useEditor } from '@tiptap/react';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -12,7 +12,7 @@ import { copySelection, dropFiles, handlePaste, openAttachmentAt, pasteFromMenu 
 import { createExtensions } from './editor/extensions';
 import { showContextMenu } from './menu';
 import { DEFAULT_COLOR, parseNote, serializeNote, type NoteMeta } from './noteFile';
-import { speak, startDictation, stopSpeaking } from './speech';
+import { speak, stopSpeaking, toggleDictation } from './speech';
 
 const SAVE_DELAY_MS = 1000;
 const LAYOUT_DELAY_MS = 500;
@@ -35,16 +35,13 @@ interface NoteChanged {
   content: string;
 }
 
-export function NoteApp({ folder, label }: { folder: string; label: string }) {
+export function NoteApp({ folder }: { folder: string }) {
   const [meta, setMetaState] = useState<NoteMeta>({});
   const [defaults, setDefaults] = useState<Defaults>({ color: DEFAULT_COLOR, font: 'Segoe UI', fontSize: 14 });
-  const [dictating, setDictating] = useState(false);
-  const [hypothesis, setHypothesis] = useState('');
   const [loaded, setLoaded] = useState(false);
   const metaRef = useRef<NoteMeta>({});
   const lastSaved = useRef('');
   const saveTimer = useRef<number | undefined>(undefined);
-  const stopDictationRef = useRef<(() => void) | undefined>(undefined);
   const editorRef = useRef<Editor | null>(null);
 
   const editor = useEditor({
@@ -180,33 +177,14 @@ export function NoteApp({ folder, label }: { folder: string; label: string }) {
 
   const closeNote = () => {
     save();
-    stopDictationRef.current?.();
     void invoke('close_note', { folder });
   };
 
-  const toggleDictation = async () => {
-    if (stopDictationRef.current) {
-      stopDictationRef.current();
-      stopDictationRef.current = undefined;
-      setHypothesis('stopping…');
-    } else if (editor) {
-      setDictating(true);
-      setHypothesis('listening…');
-      stopDictationRef.current = await startDictation(label, {
-        onText: (text) => {
-          editor.commands.insertContent(`${text} `);
-          setHypothesis('');
-        },
-        onHypothesis: setHypothesis,
-        onEnd: (error) => {
-          stopDictationRef.current = undefined;
-          setDictating(false);
-          setHypothesis('');
-          if (error) {
-            void explainDictationError(error);
-          }
-        },
-      });
+  const dictate = async () => {
+    editor?.commands.focus();
+    const error = await toggleDictation();
+    if (error) {
+      await message(error, { title: 'Dictation', kind: 'error' });
     }
   };
 
@@ -221,7 +199,6 @@ export function NoteApp({ folder, label }: { folder: string; label: string }) {
       color: meta.color ?? defaults.color,
       font: meta.font ?? defaults.font,
       fontSize: Number(meta.fontSize ?? defaults.fontSize),
-      dictating,
       hasSelection: from !== to,
       setMeta,
       undo: () => editor.commands.undo(),
@@ -231,7 +208,7 @@ export function NoteApp({ folder, label }: { folder: string; label: string }) {
       paste: () => void pasteFromMenu(editor, folder),
       speak: () => speak(selectedText || editor.getText()),
       stopSpeaking,
-      toggleDictation: () => void toggleDictation(),
+      dictate: () => void dictate(),
       openFolder: () => void invoke('open_in_explorer', { folder, rel: null }),
       close: closeNote,
     });
@@ -248,29 +225,13 @@ export function NoteApp({ folder, label }: { folder: string; label: string }) {
     <div className="note" style={style} onContextMenu={onContextMenu}>
       <div className="titlebar" data-tauri-drag-region style={{ background: darken(color) }}>
         <button className="titlebar-btn" title="New note (Ctrl+N)" onClick={() => void invoke('create_note')}>+</button>
-        <span className="titlebar-title" data-tauri-drag-region title={hypothesis}>
-          {dictating ? `● ${hypothesis || 'dictating'}` : ''}
-        </span>
+        <span className="titlebar-title" data-tauri-drag-region />
+
         <button className="titlebar-btn" title="Close (archive for 30 days)" onClick={closeNote}>×</button>
       </div>
       <EditorContent editor={editor} className="editor-host" />
     </div>
   );
-}
-
-async function explainDictationError(error: string) {
-  if (error.includes('SPEECH_PRIVACY')) {
-    const go = await ask(
-      'Windows only allows dictation after "Online speech recognition" is turned on under ' +
-        'Settings > Privacy & security > Speech.\n\nOpen that settings page now?',
-      { title: 'Dictation needs a Windows setting', kind: 'warning', okLabel: 'Open Settings', cancelLabel: 'Not now' },
-    );
-    if (go) {
-      await invoke('open_speech_settings');
-    }
-  } else {
-    await ask(`Dictation stopped: ${error}`, { title: 'Dictation', kind: 'error', okLabel: 'OK', cancelLabel: 'Close' });
-  }
 }
 
 function preventDefault(event: Event): boolean {
