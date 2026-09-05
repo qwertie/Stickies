@@ -27,6 +27,8 @@ pub struct AppState {
     /// Until this instant, window move/resize events are the app's own doing (clamping after a
     /// monitor change) and must not be saved as the user's chosen layout.
     pub programmatic_moves_until: Mutex<Instant>,
+    /// Label of the note window the user focused most recently; the corner dot raises this one.
+    pub last_focused: Mutex<Option<String>>,
 }
 
 #[derive(Serialize)]
@@ -56,6 +58,14 @@ pub fn run() {
             labels: Mutex::new(HashMap::new()),
             last_written: Mutex::new(HashMap::new()),
             programmatic_moves_until: Mutex::new(Instant::now()),
+            last_focused: Mutex::new(None),
+        })
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::Focused(true) = event {
+                if window.label().starts_with("note-") {
+                    *window.state::<AppState>().last_focused.lock().unwrap() = Some(window.label().to_string());
+                }
+            }
         })
         .invoke_handler(tauri::generate_handler![
             load_note,

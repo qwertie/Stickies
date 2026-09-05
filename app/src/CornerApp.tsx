@@ -2,7 +2,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { Menu, MenuItem, PredefinedMenuItem } from '@tauri-apps/api/menu';
 
 /**
- * The 6x6 hot-spot in the top-right corner of the primary screen: hover raises the newest note,
+ * The 6x6 hot-spot in the top-right corner of the primary screen: hover raises the last-used note,
  * click brings every note to the front, double-click creates a note, right-click shows a menu.
  */
 export function CornerApp() {
@@ -27,7 +27,7 @@ async function showCornerMenu() {
     items: await Promise.all([
       item('New note (double-click)', 'create_note'),
       item('Bring all notes to front (click)', 'raise_all'),
-      item('Show newest note (hover)', 'focus_latest'),
+      item('Show last-used note (hover)', 'focus_latest'),
       PredefinedMenuItem.new({ item: 'Separator' }),
       item('Quit Stickies', 'quit_app'),
     ]),

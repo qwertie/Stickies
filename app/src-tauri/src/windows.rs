@@ -75,14 +75,17 @@ pub fn raise_all(app: &AppHandle) {
     }
 }
 
+/// Raises the note the user focused most recently, or the newest note if none has been focused.
 pub fn focus_latest(app: &AppHandle) {
-    let notes = app.state::<AppState>().store.list_notes();
-    if let Some(newest) = notes.last() {
-        if let Some(w) = app.get_webview_window(&label_for(&newest.folder)) {
-            w.set_always_on_top(true).ok();
-            w.set_always_on_top(false).ok();
-            w.set_focus().ok();
-        }
+    let state = app.state::<AppState>();
+    let last = state.last_focused.lock().unwrap().clone();
+    let window = last
+        .and_then(|label| app.get_webview_window(&label))
+        .or_else(|| state.store.list_notes().last().and_then(|n| app.get_webview_window(&label_for(&n.folder))));
+    if let Some(w) = window {
+        w.set_always_on_top(true).ok();
+        w.set_always_on_top(false).ok();
+        w.set_focus().ok();
     }
 }
 
