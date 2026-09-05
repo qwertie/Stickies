@@ -1,34 +1,64 @@
 # Stickies
 
-Sticky notes for Windows whose data is nothing but a folder of Markdown files, plus a morning
-report generator that writes into that folder.
+Sticky notes for Windows. Every note is a small yellow window you can type in, paste pictures and
+files into, and move around. Notes are saved automatically and come back after a restart. Closing a
+note archives it for 30 days in case you want it back.
+
+Behind the scenes each note is just a folder with a Markdown file in it, so the notes are easy to
+sync between PCs (they live in OneDrive by default), easy to read on a phone with Obsidian, and easy
+for other programs to create. The included **morning report** does exactly that: a script runs at
+4 AM, collects your Azure DevOps work, pull requests, unread email and git worktrees, has Claude
+summarize them, and drops the result in as a new note.
 
 ```
 Stickies/
-  app/             Tauri 2 + React desktop app
-  morning-report/  PowerShell + Claude Code script that produces a daily report note
+  app/             the desktop app (Tauri 2 + React)
+  morning-report/  the daily report script (PowerShell + Claude Code)
 ```
 
-## The app
+## Installing the app
 
-- Each note is a frameless 500×500 window with a thin title bar. New notes appear on the right of
-  the primary screen, 15 px from the top, stepping down 200 px per note and wrapping to the top.
-- Rich text (TipTap) saved as Markdown one second after the last edit. Images and files pasted into
-  a note are copied into the note's `attachments/` folder and appear inline; folders too. Selecting
-  them and copying puts real files on the clipboard alongside the text. Double-click opens them.
-- Right-click menu: new note, undo/redo, cut/copy/paste, speak (selection or whole note), dictation,
-  color, font and size, **Restore Archived** (most recently closed first), data folder commands.
-- Closing a note archives it; archived notes are deleted after 30 days.
-- A 6×6 px yellow hot-spot in the top-right corner of the screen: click brings every note to the
-  front, hover raises the most recently created note. There is also a tray icon.
-- Starts with Windows. Notes are pulled back on screen when the resolution drops or a monitor goes.
-- Edits made to the files by anything else (OneDrive, Obsidian, a script) show up live.
+**Easiest:** download `Stickies_x.y.z_x64-setup.exe` from the
+[Releases](../../releases) page of this repository and run it. It installs for the current user
+only (no admin rights needed), starts Stickies, and makes it start with Windows.
 
-### Data folder
+**From source:** you need [Node.js](https://nodejs.org) 22 or newer, [Rust](https://rustup.rs)
+(stable, MSVC toolchain) and the Visual Studio "Desktop development with C++" build tools. Then, in
+PowerShell:
 
-Default: `%OneDrive%\Stickies` when OneDrive is set up, otherwise `%USERPROFILE%\Stickies`.
-Change it from the right-click menu; the existing notes move with it. Layout (window positions) is
-stored per machine under `%APPDATA%\Stickies`, not in the synced folder.
+```powershell
+git clone https://github.com/<owner>/Stickies.git
+cd Stickies\app
+npm install
+npm run tauri build
+```
+
+The installer appears at `app\src-tauri\target\release\bundle\nsis\`. Use `npm run tauri dev`
+instead of `build` to run it with live reload while developing. Pushing a git tag such as `v0.2.0`
+makes GitHub Actions build the installer and publish a release automatically.
+
+## Using it
+
+- **Make a note:** click **+** in a note's title bar, press **Ctrl+N**, or use the tray icon.
+  New notes appear on the right side of the screen, each 200 px below the previous one.
+- **Right-click a note** for everything else: colors, fonts and sizes, cut/copy/paste, undo,
+  speak the note (or just the selected text), dictate, restore an archived note, open the note's
+  folder, change where notes are stored, and close (archive) the note.
+- **Paste anything.** Images appear inline. Files and whole folders appear as small chips.
+  Double-click a chip or image to open it. Select chips along with text and copy: the files are
+  put on the clipboard too, so you can paste them into Explorer or an email.
+- **The tiny yellow dot** in the top-right corner of the screen: click it to bring all notes on
+  top of other windows; hovering raises the newest note.
+- **Closing a note** archives it. Right-click any note and open **Restore Archived** to get it back
+  within 30 days; after that it is deleted.
+- If your screen resolution changes or a monitor is unplugged, notes are pulled back on screen.
+
+## Where the notes live
+
+By default in `OneDrive\Stickies` if you have OneDrive, otherwise in your user folder under
+`Stickies`. Right-click a note and choose **Change data folder…** to move them; existing notes move
+with it. Window positions are kept per computer (in `%APPDATA%\Stickies`), so a laptop and a
+desktop with different screens do not fight over layout.
 
 ```
 Stickies/
@@ -39,27 +69,16 @@ Stickies/
   archive/               closed notes, same layout, with an `archived:` timestamp
 ```
 
-Because it is plain Markdown with relative links, the folder is also a valid Obsidian vault. Point
-Obsidian at it on your phone (Obsidian Sync, or the Remotely Save plugin against OneDrive) to read
-and edit notes there; edits sync back and the desktop windows update.
+Because it is plain Markdown with relative links, the folder is also a valid **Obsidian** vault.
+To read and edit notes on a phone, open the folder in Obsidian mobile using Obsidian Sync, or the
+Remotely Save plugin pointed at the same OneDrive folder. Edits made on the phone sync back and the
+desktop windows update by themselves.
 
-Any program can create a note by creating a subfolder under `notes/` containing `note.md`. The
-frontmatter is optional. That is how the morning report works.
-
-### Build and install
-
-Prerequisites: Node 22+, Rust (stable, MSVC), and the Visual Studio C++ build tools.
-
-```powershell
-cd app
-npm install
-npm run tauri dev      # run with hot reload
-npm run tauri build    # installer at src-tauri\target\release\bundle\nsis\Stickies_*_x64-setup.exe
-```
-
-Pushing a tag like `v0.1.0` makes GitHub Actions build the installer and attach it to a release,
-which is the easy way to install on another PC.
+Any program can create a note by creating a subfolder under `notes/` containing a `note.md`. The
+frontmatter is optional. That is the whole "plugin" interface, and it is how the morning report
+works.
 
 ## The morning report
 
-See [morning-report/README.md](morning-report/README.md).
+See [morning-report/README.md](morning-report/README.md) for setup. It needs a few one-time steps
+that only you can do (an Azure DevOps token, a Microsoft sign-in, Claude Code on the PC).
