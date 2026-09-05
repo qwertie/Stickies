@@ -3,7 +3,7 @@ import type { Editor, JSONContent } from '@tiptap/core';
 import { DOMSerializer, type Slice } from '@tiptap/pm/model';
 import type { EditorView } from '@tiptap/pm/view';
 
-import { isRelativeAttachment } from '../assets';
+import { fromAssetSrc, isRelativeAttachment } from '../assets';
 
 export interface ImportedFile {
   rel: string;
@@ -72,6 +72,29 @@ async function pasteFilesAsync(editor: Editor, folder: string, html: string, ima
   } else {
     editor.commands.insertContent(nodesFor(imported));
   }
+}
+
+/** Files dropped from Explorer (Tauri's native drag-drop event gives real paths). */
+export async function dropFiles(editor: Editor, folder: string, paths: string[], pos: number | null) {
+  const imported = await invoke<ImportedFile[]>('import_files', { folder, paths });
+  if (imported.length > 0) {
+    if (pos !== null) {
+      editor.commands.insertContentAt(pos, nodesFor(imported));
+    } else {
+      editor.commands.insertContent(nodesFor(imported));
+    }
+  }
+}
+
+/** Double-click on an attachment chip or image opens it with its default program. */
+export function openAttachmentAt(target: EventTarget | null, folder: string): boolean {
+  const el = target instanceof Element ? target.closest<HTMLElement>('[data-attachment], img') : null;
+  const rel = el?.getAttribute('data-href') ?? (el instanceof HTMLImageElement ? fromAssetSrc(el.getAttribute('src')) : null);
+  if (isRelativeAttachment(rel)) {
+    void invoke('open_in_explorer', { folder, rel: rel.replace(/\/$/, '') });
+    return true;
+  }
+  return false;
 }
 
 /** Context-menu Paste: the browser paste event is unavailable, so the Rust side reads the clipboard. */

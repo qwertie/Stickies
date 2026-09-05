@@ -135,17 +135,20 @@ function Get-AdoData([array]$Worktrees) {
     })
 
     # Failed pipeline runs that have some connection to me: the branch names one of my work items,
-    # a worktree on this machine has the branch checked out, or I requested the build.
+    # a worktree on this machine has the branch checked out, or I requested the build. Only the
+    # latest completed run per pipeline+branch counts, so a failure followed by a fix is not listed.
     $failedBuilds = @()
     if ([int]$ado.failedBuildDays -gt 0) {
         $minTime = (Get-Date).AddDays(-[int]$ado.failedBuildDays).ToUniversalTime().ToString('o')
-        $builds = (Invoke-RestMethod "$org/$project/_apis/build/builds?statusFilter=completed&resultFilter=failed&minTime=$minTime&`$top=200&$api" -Headers $headers).value
+        $builds = (Invoke-RestMethod "$org/$project/_apis/build/builds?statusFilter=completed&minTime=$minTime&queryOrder=finishTimeDescending&`$top=500&$api" -Headers $headers).value
         $myIds = @($mine | ForEach-Object { [string]$_.id })
         $seen = @{}
         foreach ($b in $builds) {
             $branch = $b.sourceBranch -replace '^refs/heads/', ''
             $key = "$($b.definition.id)|$branch"
             if ($seen.ContainsKey($key)) { continue }
+            $seen[$key] = $true
+            if ($b.result -ne 'failed') { continue }
             $reasons = @()
             $ticketHits = @([regex]::Matches($branch, '\d{3,6}') | ForEach-Object { $_.Value } | Where-Object { $myIds -contains $_ })
             if ($ticketHits) { $reasons += "branch names my work item #$($ticketHits -join ', #')" }
@@ -153,7 +156,6 @@ function Get-AdoData([array]$Worktrees) {
             if ($wt) { $reasons += "checked out in worktree $($wt.path)" }
             if ($b.requestedFor.id -eq $me.id) { $reasons += 'I requested the build' }
             if ($reasons) {
-                $seen[$key] = $true
                 $failedBuilds += [pscustomobject]@{
                     pipeline = $b.definition.name; buildNumber = $b.buildNumber; branch = $branch
                     finished = $b.finishTime; requestedBy = $b.requestedFor.displayName

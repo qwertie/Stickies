@@ -77,6 +77,7 @@ pub fn run() {
             restore_note,
             save_attachment,
             import_clipboard_files,
+            import_files,
             read_clipboard_for_paste,
             copy_to_clipboard,
             open_in_explorer,
@@ -190,6 +191,12 @@ fn save_attachment(state: State<AppState>, folder: String, name: String, bytes: 
 #[tauri::command]
 fn import_clipboard_files(state: State<AppState>, folder: String) -> Result<Vec<ImportedFile>, String> {
     let paths = clipboard::read_files();
+    state.store.import_paths(&folder, &paths)
+}
+
+/// Copies files dropped from Explorer into the note's attachments.
+#[tauri::command]
+fn import_files(state: State<AppState>, folder: String, paths: Vec<PathBuf>) -> Result<Vec<ImportedFile>, String> {
     state.store.import_paths(&folder, &paths)
 }
 

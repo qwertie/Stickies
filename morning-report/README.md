@@ -11,7 +11,8 @@ The report contains:
 - Pull requests where you are a reviewer and have not voted yet
 - Pipeline runs that failed in the last few days (`ado.failedBuildDays`) and concern you: the branch
   name contains the number of one of your work items, a worktree on this machine has that branch
-  checked out, or you requested the build
+  checked out, or you requested the build. Only the latest run of each pipeline and branch counts,
+  so a failure that was fixed by a later successful run is not listed
 - Unread Outlook mail from the last week, triaged by Claude so only mail from real people, or mail
   that clearly needs you, is listed
 - Every git worktree of your configured repositories with its branch; T3 Code worktrees are marked

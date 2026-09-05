@@ -49,8 +49,9 @@ makes GitHub Actions build the installer and publish a release automatically.
 - **Dictation** uses Windows speech recognition, which Windows only allows once "Online speech
   recognition" is turned on under Settings > Privacy & security > Speech. Stickies offers to open
   that page the first time you try.
-- **Paste anything.** Images appear inline. Files and whole folders appear as small chips.
-  Double-click a chip or image to open it. Select chips along with text and copy: the files are
+- **Paste or drop anything.** Paste from the clipboard or drag files and folders in from
+  Explorer. Images appear inline; files and folders appear as small chips. Double-click a chip or
+  image to open it with its default program. Select chips along with text and copy: the files are
   put on the clipboard too, so you can paste them into Explorer or an email.
 - **The tiny yellow dot** in the top-right corner of the screen: click it to bring all notes on
   top of other windows, double-click it for a new note; hovering raises the note you used last.

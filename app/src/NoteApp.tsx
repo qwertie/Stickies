@@ -1,5 +1,6 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
+import { getCurrentWebview } from '@tauri-apps/api/webview';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { ask } from '@tauri-apps/plugin-dialog';
 import type { Editor } from '@tiptap/core';
@@ -7,7 +8,7 @@ import { EditorContent, useEditor } from '@tiptap/react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { setNoteDir } from './assets';
-import { copySelection, handlePaste, pasteFromMenu } from './editor/clipboard';
+import { copySelection, dropFiles, handlePaste, openAttachmentAt, pasteFromMenu } from './editor/clipboard';
 import { createExtensions } from './editor/extensions';
 import { showContextMenu } from './menu';
 import { DEFAULT_COLOR, parseNote, serializeNote, type NoteMeta } from './noteFile';
@@ -54,14 +55,7 @@ export function NoteApp({ folder, label }: { folder: string; label: string }) {
       handleDOMEvents: {
         copy: (view, event) => copySelection(view, folder, false) && preventDefault(event),
         cut: (view, event) => copySelection(view, folder, true) && preventDefault(event),
-      },
-      handleDoubleClickOn: (_view, _pos, node) => {
-        const rel = node.type.name === 'attachment' ? String(node.attrs.href) : node.type.name === 'image' ? String(node.attrs.src) : '';
-        if (rel) {
-          void invoke('open_in_explorer', { folder, rel: rel.replace(/\/$/, '') });
-          return true;
-        }
-        return false;
+        dblclick: (_view, event) => openAttachmentAt(event.target, folder) && preventDefault(event),
       },
     },
     onUpdate: () => scheduleSave(),
@@ -150,6 +144,21 @@ export function NoteApp({ folder, label }: { folder: string; label: string }) {
     const unlisten = listen('save-now', save);
     return () => void unlisten.then((f) => f());
   }, [save]);
+
+  useEffect(() => {
+    if (!editor) {
+      return;
+    }
+    const unlisten = getCurrentWebview().onDragDropEvent(async (e) => {
+      if (e.payload.type === 'drop' && e.payload.paths.length > 0) {
+        const scale = await getCurrentWindow().scaleFactor();
+        const p = e.payload.position.toLogical(scale);
+        const pos = editor.view.posAtCoords({ left: p.x, top: p.y })?.pos ?? null;
+        await dropFiles(editor, folder, e.payload.paths, pos);
+      }
+    });
+    return () => void unlisten.then((f) => f());
+  }, [editor, folder]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
