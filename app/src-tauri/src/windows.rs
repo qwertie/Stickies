@@ -140,7 +140,7 @@ pub fn open_options(app: &AppHandle) -> Result<(), String> {
     }
     WebviewWindowBuilder::new(app, OPTIONS_LABEL, WebviewUrl::App("index.html".into()))
         .title("Stickies Options")
-        .inner_size(460.0, 420.0)
+        .inner_size(460.0, 470.0)
         .resizable(false)
         .center()
         .initialization_script("window.__STICKIES__ = { options: true };")
@@ -222,10 +222,11 @@ pub fn monitor_signature(app: &AppHandle) -> String {
         .collect()
 }
 
-/// Right edge of the primary work area, TOP_MARGIN down, stepping SLOT_STEP per new note and
-/// wrapping to the top when the next slot would run off the bottom.
+/// Left or right edge of the primary work area (per settings), TOP_MARGIN down, stepping
+/// SLOT_STEP per new note and wrapping to the top when the next slot would run off the bottom.
 fn next_rect(app: &AppHandle) -> Rect {
     let area = primary_work_area(app);
+    let on_left = app.state::<AppState>().store.config().new_note_side == "left";
     let mut rect = Rect { x: 0, y: 0, w: NOTE_SIZE, h: NOTE_SIZE };
     layout::update(|l| {
         let mut y = TOP_MARGIN + (l.next_slot as i32) * SLOT_STEP;
@@ -234,7 +235,7 @@ fn next_rect(app: &AppHandle) -> Rect {
             y = TOP_MARGIN;
         }
         l.next_slot += 1;
-        rect.x = area.x + area.w as i32 - NOTE_SIZE as i32;
+        rect.x = if on_left { area.x } else { area.x + area.w as i32 - NOTE_SIZE as i32 };
         rect.y = area.y + y;
     });
     rect

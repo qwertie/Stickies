@@ -20,6 +20,8 @@ pub struct Config {
     pub default_font_size: u32,
     /// Days a closed note stays in the archive before it is deleted for good.
     pub archive_days: u32,
+    /// "left" or "right": which edge of the primary screen new notes appear on.
+    pub new_note_side: String,
 }
 
 impl Default for Config {
@@ -30,6 +32,7 @@ impl Default for Config {
             default_font: "Segoe UI".to_string(),
             default_font_size: 14,
             archive_days: 30,
+            new_note_side: "right".to_string(),
         }
     }
 }

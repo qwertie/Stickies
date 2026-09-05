@@ -236,3 +236,10 @@ body {
   color: #b00020;
   margin: 0;
 }
+
+.options .radio {
+  flex-direction: row;
+  align-items: center;
+  gap: 4px;
+  margin-right: 10px;
+}

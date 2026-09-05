@@ -12,6 +12,7 @@ export interface Settings {
   defaultFont: string;
   defaultFontSize: number;
   archiveDays: number;
+  newNoteSide: 'left' | 'right';
 }
 
 export function OptionsApp() {
@@ -71,6 +72,17 @@ export function OptionsApp() {
         <select value={settings.defaultFontSize} onChange={(e) => update({ defaultFontSize: Number(e.target.value) })}>
           {FONT_SIZES.map((s) => <option key={s} value={s}>{s} pt</option>)}
         </select>
+      </label>
+      <label>
+        New notes appear on the
+        <span className="inline">
+          {(['left', 'right'] as const).map((side) => (
+            <label key={side} className="radio">
+              <input type="radio" name="side" checked={settings.newNoteSide === side} onChange={() => update({ newNoteSide: side })} />
+              {side} side of the screen
+            </label>
+          ))}
+        </span>
       </label>
       <label>
         Keep closed notes for

@@ -44,7 +44,8 @@ makes GitHub Actions build the installer and publish a release automatically.
 - **Right-click a note** for everything else: speak the note (or just the selected text), dictate,
   colors, fonts and sizes, restore an archived note, open the note's folder, close (archive) the
   note, and the usual undo/cut/copy/paste.
-- **Right-click the corner dot** for **Options…**: default color, font and size for new notes, how
+- **Right-click the corner dot** for **Options…**: default color, font and size for new notes, which
+  side of the screen new notes appear on, how
   many days closed notes are kept before deletion (30 by default), and where notes are stored.
 - **Dictation** uses Windows speech recognition, which Windows only allows once "Online speech
   recognition" is turned on under Settings > Privacy & security > Speech. Stickies offers to open
