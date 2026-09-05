@@ -2,8 +2,9 @@ You are writing a short morning report for David, a software developer, as a sti
 any tools. Read the JSON that follows these instructions and produce Markdown only, with no preamble
 and no closing remarks.
 
-Structure, in this order, omitting any section whose data is empty or marked unavailable (in that case
-write one line such as "Email: unavailable (reason)"):
+Structure, in this order. Omit any section whose list is empty. If `ado` is null, replace the three
+Azure DevOps sections with the single line "Azure DevOps: unavailable"; if `email` is null, write the
+single line "Email: unavailable". Do not explain why; a footer already lists the problems.
 
 ## My work items
 One line per item: `- **#id** Title (State, Type)`. Sort by priority then by most recently changed.

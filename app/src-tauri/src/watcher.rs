@@ -24,6 +24,9 @@ pub fn start(app: AppHandle) -> notify::Result<Debouncer<notify::RecommendedWatc
     let watched = notes_dir.clone();
     let mut debouncer = new_debouncer(Duration::from_millis(400), move |res: DebounceEventResult| {
         if let Ok(events) = res {
+            for e in &events {
+                log::debug!("fs event {:?} {:?}", e.kind, e.path);
+            }
             let mut folders: Vec<String> = events
                 .iter()
                 .filter_map(|e| folder_of(&watched, &e.path))
@@ -40,6 +43,7 @@ pub fn start(app: AppHandle) -> notify::Result<Debouncer<notify::RecommendedWatc
 }
 
 fn handle_folder(app: &AppHandle, folder: &str) {
+    log::info!("note folder changed on disk: {folder}");
     let state = app.state::<AppState>();
     if !state.store.note_dir(folder).is_dir() {
         windows::close_note_window(app, folder);
@@ -59,13 +63,26 @@ fn handle_folder(app: &AppHandle, folder: &str) {
     }
 }
 
+/// First path component below `notes_dir`. Compares case-insensitively and ignores the `\\?\`
+/// verbatim prefix, since the watcher may report paths in a different form than we passed in.
 fn folder_of(notes_dir: &Path, path: &Path) -> Option<String> {
-    let rel = path.strip_prefix(notes_dir).ok()?;
+    let base = normalize(notes_dir);
+    let full = normalize(path);
+    let rel = full.strip_prefix(&base).ok()?;
     let first = rel.components().next()?;
     let name = first.as_os_str().to_string_lossy().to_string();
     if name.is_empty() || name.ends_with(".tmp") {
         None
     } else {
-        Some(name)
+        // Return the folder name with its on-disk casing.
+        let original: Vec<_> = path.components().collect();
+        let depth = base.components().count();
+        Some(original.get(depth).map(|c| c.as_os_str().to_string_lossy().to_string()).unwrap_or(name))
     }
+}
+
+fn normalize(path: &Path) -> std::path::PathBuf {
+    let s = path.to_string_lossy();
+    let s = s.strip_prefix(r"\\?\").unwrap_or(&s);
+    std::path::PathBuf::from(s.to_lowercase())
 }

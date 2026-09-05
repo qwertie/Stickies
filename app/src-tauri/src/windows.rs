@@ -85,7 +85,7 @@ pub fn focus_latest(app: &AppHandle) {
 pub fn open_corner(app: &AppHandle) -> Result<(), String> {
     let area = primary_work_area(app);
     let x = (area.x + area.w as i32) as f64 - CORNER_SIZE;
-    WebviewWindowBuilder::new(app, CORNER_LABEL, WebviewUrl::App("index.html".into()))
+    let window = WebviewWindowBuilder::new(app, CORNER_LABEL, WebviewUrl::App("index.html".into()))
         .title("Stickies")
         .decorations(false)
         .resizable(false)
@@ -98,9 +98,31 @@ pub fn open_corner(app: &AppHandle) -> Result<(), String> {
         .position(x, 0.0)
         .initialization_script("window.__STICKIES__ = { corner: true };")
         .build()
-        .map(|_| ())
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+    force_tiny_size(&window);
+    Ok(())
 }
+
+/// Windows refuses sizes below its minimum tracking size through the normal path; SetWindowPos
+/// with SWP_NOSENDCHANGING skips that check.
+#[cfg(windows)]
+fn force_tiny_size(window: &WebviewWindow) {
+    use windows::Win32::Foundation::HWND;
+    use windows::Win32::UI::WindowsAndMessaging::{
+        SetWindowPos, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSENDCHANGING, SWP_NOZORDER,
+    };
+    let scale = window.scale_factor().unwrap_or(1.0);
+    let px = (CORNER_SIZE * scale).round() as i32;
+    if let Ok(hwnd) = window.hwnd() {
+        let hwnd = HWND(hwnd.0 as _);
+        unsafe {
+            SetWindowPos(hwnd, None, 0, 0, px, px, SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOSENDCHANGING).ok();
+        }
+    }
+}
+
+#[cfg(not(windows))]
+fn force_tiny_size(_: &WebviewWindow) {}
 
 pub fn build_tray(app: &AppHandle) -> tauri::Result<()> {
     let new_note = MenuItem::with_id(app, "new", "New note", true, None::<&str>)?;

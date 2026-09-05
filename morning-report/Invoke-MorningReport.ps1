@@ -185,6 +185,9 @@ function Invoke-Claude([string]$RawJson) {
         Add-Failure 'Claude' 'claude CLI not found on PATH'
         return $null
     }
+    # claude speaks UTF-8 on both pipes; Windows PowerShell defaults to the ANSI code page.
+    [Console]::OutputEncoding = [Text.Encoding]::UTF8
+    $OutputEncoding = [Text.Encoding]::UTF8
     $fence = [string][char]96 * 3
     $prompt = (Get-Content "$PSScriptRoot\prompt.md" -Raw -Encoding UTF8) + "`n`n" + $fence + "json`n" + $RawJson + "`n" + $fence
     $output = $prompt | & $claude.Source -p --output-format text --model $config.claudeModel 2>&1
