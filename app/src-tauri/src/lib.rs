@@ -54,6 +54,7 @@ pub fn run() {
         .plugin(tauri_plugin_autostart::init(tauri_plugin_autostart::MacosLauncher::LaunchAgent, None))
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
+        .on_menu_event(|app, event| windows::handle_app_menu(app, event.id.as_ref()))
         .manage(AppState {
             store: Store::open(),
             labels: Mutex::new(HashMap::new()),
@@ -88,6 +89,7 @@ pub fn run() {
             get_settings,
             save_settings,
             open_options,
+            show_app_menu,
             start_dictation,
             stop_dictation,
             quit_app,
@@ -118,12 +120,18 @@ pub fn run() {
         });
 }
 
-/// Asks every note window to flush its pending save, then exits.
+/// Asks every note window to flush its pending save, deletes attachment files no open note
+/// references any more (see `Store::prune_attachments` for why not earlier), then exits.
 pub fn quit(app: &AppHandle) {
     app.emit("save-now", ()).ok();
     let app = app.clone();
     std::thread::spawn(move || {
         std::thread::sleep(Duration::from_millis(500));
+        let state = app.state::<AppState>();
+        let open: Vec<String> = state.labels.lock().unwrap().values().cloned().collect();
+        for folder in open {
+            state.store.prune_attachments(&folder);
+        }
         app.exit(0);
     });
 }
@@ -274,6 +282,14 @@ fn save_settings(app: AppHandle, state: State<AppState>, mut settings: Config) -
 #[tauri::command]
 async fn open_options(app: AppHandle) -> Result<(), String> {
     windows::open_options(&app)
+}
+
+/// Right-click on the corner dot: pops up the same menu the tray icon uses.
+#[tauri::command]
+async fn show_app_menu(app: AppHandle, window: tauri::Window) -> Result<(), String> {
+    use tauri::menu::ContextMenu;
+    let menu = windows::build_app_menu(&app).map_err(|e| e.to_string())?;
+    menu.popup(window).map_err(|e| e.to_string())
 }
 
 /// Records where the user put a window. Moves the app made itself (clamping) are ignored so the

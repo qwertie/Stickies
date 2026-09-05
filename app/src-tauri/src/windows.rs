@@ -4,8 +4,8 @@ use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 use std::time::{Duration, Instant};
 
-use tauri::menu::{Menu, MenuItem};
-use tauri::tray::{TrayIconBuilder, TrayIconEvent};
+use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
+use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{AppHandle, LogicalPosition, LogicalSize, Manager, Monitor, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
 
 use crate::layout::{self, Rect};
@@ -149,36 +149,63 @@ pub fn open_options(app: &AppHandle) -> Result<(), String> {
         .map_err(|e| e.to_string())
 }
 
+/// The one menu shared by the tray icon and the corner dot. The labels double as a cheat sheet
+/// for the gestures both of them support.
+pub fn build_app_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
+    let item = |id: &str, text: &str| MenuItem::with_id(app, id, text, true, None::<&str>);
+    Menu::with_items(
+        app,
+        &[
+            &item("new", "New note (double-click)")?,
+            &item("show", "Bring all notes to front (click)")?,
+            &item("latest", "Show last-used note (hover)")?,
+            &PredefinedMenuItem::separator(app)?,
+            &item("folder", "Open data folder")?,
+            &item("options", "Options…")?,
+            &PredefinedMenuItem::separator(app)?,
+            &item("quit", "Quit Stickies")?,
+        ],
+    )
+}
+
+pub fn handle_app_menu(app: &AppHandle, id: &str) {
+    match id {
+        "new" => {
+            crate::create_and_open(app).ok();
+        }
+        "show" => raise_all(app),
+        "latest" => focus_latest(app),
+        "folder" => {
+            let dir = app.state::<AppState>().store.data_dir.clone();
+            tauri_plugin_opener::open_path(dir, None::<&str>).ok();
+        }
+        "options" => {
+            open_options(app).ok();
+        }
+        "quit" => crate::quit(app),
+        _ => {}
+    }
+}
+
+/// Tray icon with the same menu and gestures as the corner dot: click raises all notes,
+/// double-click creates one, hover raises the last-used note.
 pub fn build_tray(app: &AppHandle) -> tauri::Result<()> {
-    let new_note = MenuItem::with_id(app, "new", "New note", true, None::<&str>)?;
-    let show_all = MenuItem::with_id(app, "show", "Bring all notes to front", true, None::<&str>)?;
-    let open_dir = MenuItem::with_id(app, "folder", "Open data folder", true, None::<&str>)?;
-    let options = MenuItem::with_id(app, "options", "Options…", true, None::<&str>)?;
-    let quit = MenuItem::with_id(app, "quit", "Quit Stickies", true, None::<&str>)?;
-    let menu = Menu::with_items(app, &[&new_note, &show_all, &open_dir, &options, &quit])?;
+    let menu = build_app_menu(app)?;
     TrayIconBuilder::new()
         .icon(app.default_window_icon().unwrap().clone())
         .tooltip("Stickies")
         .menu(&menu)
         .show_menu_on_left_click(false)
-        .on_menu_event(|app, event| match event.id.as_ref() {
-            "new" => {
-                crate::create_and_open(app).ok();
-            }
-            "show" => raise_all(app),
-            "folder" => {
-                let dir = app.state::<AppState>().store.data_dir.clone();
-                tauri_plugin_opener::open_path(dir, None::<&str>).ok();
-            }
-            "options" => {
-                open_options(app).ok();
-            }
-            "quit" => crate::quit(app),
-            _ => {}
-        })
+        .on_menu_event(|app, event| handle_app_menu(app, event.id.as_ref()))
         .on_tray_icon_event(|tray, event| {
-            if let TrayIconEvent::Click { button: tauri::tray::MouseButton::Left, .. } = event {
-                raise_all(tray.app_handle());
+            let app = tray.app_handle();
+            match event {
+                TrayIconEvent::Click { button: MouseButton::Left, button_state: MouseButtonState::Up, .. } => raise_all(app),
+                TrayIconEvent::DoubleClick { button: MouseButton::Left, .. } => {
+                    crate::create_and_open(app).ok();
+                }
+                TrayIconEvent::Enter { .. } => focus_latest(app),
+                _ => {}
             }
         })
         .build(app)?;

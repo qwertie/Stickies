@@ -56,7 +56,9 @@ makes GitHub Actions build the installer and publish a release automatically.
   put on the clipboard too, so you can paste them into Explorer or an email.
 - **The tiny yellow dot** in the top-right corner of the screen: click it to bring all notes on
   top of other windows, double-click it for a new note; hovering raises the note you used last.
-- **Quit** is in the right-click menu and the tray icon's menu. Stickies starts again with Windows
+- **The tray icon** behaves exactly like the corner dot: same clicks, same hover, same menu.
+- **Quit** is in the right-click menus. When Stickies quits it deletes attachment files that are no
+  longer referenced by any note (kept until then so Undo can bring them back). Stickies starts again with Windows
   (it registers itself under the current user's Run key); the tray menu's Quit does not undo that.
 - **Closing a note** archives it. Right-click any note and open **Restore Archived** to get it back
   within 30 days (adjustable in Options); after that it is deleted. Closing an empty note deletes

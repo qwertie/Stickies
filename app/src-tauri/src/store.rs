@@ -218,6 +218,29 @@ impl Store {
         Ok(out)
     }
 
+    /// Deletes attachment files the note no longer references.
+    ///
+    /// Deletion is deferred to app exit rather than done when the user removes a chip or image:
+    /// the editor's undo stack can bring the reference back, and the file must still exist for that
+    /// to mean anything. Undo history does not survive a restart, so exit is the safe moment.
+    pub fn prune_attachments(&self, folder: &str) {
+        let Ok(content) = self.read_note(folder) else { return };
+        let dir = self.note_dir(folder).join("attachments");
+        let Ok(entries) = fs::read_dir(&dir) else { return };
+        for entry in entries.flatten() {
+            let name = entry.file_name().to_string_lossy().to_string();
+            let encoded = name.replace(' ', "%20");
+            let referenced = content.contains(&format!("attachments/{name}")) || content.contains(&format!("attachments/{encoded}"));
+            if !referenced {
+                let path = entry.path();
+                let result = if path.is_dir() { fs::remove_dir_all(&path) } else { fs::remove_file(&path) };
+                if let Err(e) = result {
+                    log::warn!("could not delete orphaned attachment {path:?}: {e}");
+                }
+            }
+        }
+    }
+
     pub fn resolve(&self, folder: &str, rel: &str) -> PathBuf {
         self.note_dir(folder).join(rel)
     }
