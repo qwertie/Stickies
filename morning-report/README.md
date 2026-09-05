@@ -84,6 +84,23 @@ The email section can be switched off with `"enabled": false` under `email` in `
 and logged in on this PC. Without it the script still writes a note, just as an unfiltered listing.
 `claudeModel` in `config.json` chooses the model; `sonnet` is fast and cheap enough for this.
 
+**When the login expires** (it does, every few weeks), the report still appears, as an unfiltered
+listing, but it opens with a callout and an attachment named `fix-claude-login.cmd`. Double-click
+that chip in the note: it runs `claude auth login` (a browser window opens), then regenerates the
+report, and the note updates by itself. The scheduled task does not retry in this case, because a
+retry cannot sign you in.
+
+To stop it happening at all, create a long-lived token once and give it to the script through an
+environment variable:
+
+```powershell
+claude setup-token          # prints a token; copy it
+[Environment]::SetEnvironmentVariable('CLAUDE_CODE_OAUTH_TOKEN', '<token>', 'User')
+```
+
+The `claude` CLI uses that variable in preference to the interactive login, so the 4 AM run no
+longer depends on it.
+
 ### 5. Try it, then schedule it
 
 ```powershell

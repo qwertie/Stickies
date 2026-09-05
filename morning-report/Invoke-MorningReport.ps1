@@ -14,11 +14,13 @@
 param(
     [string]$ConfigPath = "$PSScriptRoot\config.json",
     [switch]$NoClaude,
-    [switch]$KeepRaw
+    [switch]$KeepRaw,
+    [switch]$SimulateAuthFailure
 )
 
 $ErrorActionPreference = 'Stop'
 $script:Failures = @()
+$script:ClaudeNeedsLogin = $false
 $logDir = Join-Path $PSScriptRoot 'logs'
 New-Item -ItemType Directory -Force $logDir | Out-Null
 $logFile = Join-Path $logDir ("{0:yyyy-MM-dd}.log" -f (Get-Date))
@@ -219,6 +221,15 @@ function Invoke-Claude([string]$RawJson) {
         Add-Failure 'Claude' 'claude CLI not found on PATH'
         return $null
     }
+    # Logins expire. Check first so the failure is explained instead of surfacing as a cryptic
+    # exit code, and so the note can offer a one-click fix.
+    $status = if ($SimulateAuthFailure) { '{"loggedIn": false}' } else { (& $claude.Source auth status --json 2>&1) -join "`n" }
+    $loggedIn = $env:CLAUDE_CODE_OAUTH_TOKEN -or $env:ANTHROPIC_API_KEY -or ($status -match '"loggedIn"\s*:\s*true')
+    if (-not $loggedIn) {
+        $script:ClaudeNeedsLogin = $true
+        Add-Failure 'Claude' 'not signed in (login expired)'
+        return $null
+    }
     # claude speaks UTF-8 on both pipes; Windows PowerShell defaults to the ANSI code page.
     [Console]::OutputEncoding = [Text.Encoding]::UTF8
     $OutputEncoding = [Text.Encoding]::UTF8
@@ -226,7 +237,12 @@ function Invoke-Claude([string]$RawJson) {
     $prompt = (Get-Content "$PSScriptRoot\prompt.md" -Raw -Encoding UTF8) + "`n`n" + $fence + "json`n" + $RawJson + "`n" + $fence
     $output = $prompt | & $claude.Source -p --output-format text --model $config.claudeModel 2>&1
     if ($LASTEXITCODE -ne 0 -or -not "$output".Trim()) {
-        Add-Failure 'Claude' "claude -p exited with $LASTEXITCODE`: $output"
+        if ("$output" -match 'log ?in|authenticat|Invalid API key|OAuth|token.*(expired|invalid)|401') {
+            $script:ClaudeNeedsLogin = $true
+            Add-Failure 'Claude' 'sign-in rejected (login expired)'
+        } else {
+            Add-Failure 'Claude' "claude -p exited with $LASTEXITCODE`: $output"
+        }
         return $null
     }
     return ($output -join "`n")
@@ -234,7 +250,7 @@ function Invoke-Claude([string]$RawJson) {
 
 function Format-Fallback($raw) {
     $sb = [Text.StringBuilder]::new()
-    [void]$sb.AppendLine("_Claude was unavailable; this is the unfiltered listing._`n")
+    if (-not $script:ClaudeNeedsLogin) { [void]$sb.AppendLine("_Claude was unavailable; this is the unfiltered listing._`n") }
     if ($raw.ado) {
         [void]$sb.AppendLine('## My work items')
         foreach ($w in $raw.ado.myWorkItems) { [void]$sb.AppendLine("- **#$($w.id)** $($w.title) ($($w.state), $($w.type))") }
@@ -254,11 +270,43 @@ function Format-Fallback($raw) {
     return $sb.ToString()
 }
 
+# When Claude's login has expired, the note opens with a callout and a double-clickable script that
+# signs in (browser) and regenerates the report. The script is an ordinary note attachment.
+function Write-LoginFix([string]$Folder) {
+    $attachments = Join-Path $Folder 'attachments'
+    $fix = Join-Path $attachments 'fix-claude-login.cmd'
+    if (-not $script:ClaudeNeedsLogin) {
+        if (Test-Path $fix) { Remove-Item $fix }
+        return ''
+    }
+    New-Item -ItemType Directory -Force $attachments | Out-Null
+    $cmd = @(
+        '@echo off',
+        'title Stickies: sign in to Claude',
+        'echo Signing in to Claude Code (a browser window will open)...',
+        'claude auth login',
+        'if errorlevel 1 ( echo. & echo Sign-in did not complete. & pause & exit /b 1 )',
+        'echo.',
+        'echo Signed in. Regenerating the morning report...',
+        ('powershell -NoProfile -ExecutionPolicy Bypass -File "{0}"' -f (Join-Path $PSScriptRoot 'Invoke-MorningReport.ps1')),
+        'echo Done. The sticky note updates by itself.',
+        'timeout /t 5'
+    )
+    [IO.File]::WriteAllLines($fix, $cmd, [Text.ASCIIEncoding]::new())
+    return @(
+        '> **Claude needs to sign in again.** Its login has expired, so this is the unfiltered listing.',
+        '> Double-click to fix: [Sign in to Claude and regenerate this report](attachments/fix-claude-login.cmd)',
+        '> To stop this recurring, run `claude setup-token` once and store the token in a user environment',
+        '> variable named `CLAUDE_CODE_OAUTH_TOKEN` (see morning-report/README.md).',
+        ''
+    ) -join "`n"
+}
+
 function Write-Note([string]$DataDir, [string]$Body) {
     $today = Get-Date
     $folder = Join-Path $DataDir ("notes\{0:yyyy-MM-dd}-morning-report" -f $today)
     New-Item -ItemType Directory -Force $folder | Out-Null
-    $header = "# Morning report, {0:dddd d MMMM}`n`n" -f $today
+    $header = ("# Morning report, {0:dddd d MMMM}`n`n" -f $today) + (Write-LoginFix $folder)
     $failures = if ($script:Failures) { "`n---`n_Problems: " + ($script:Failures -join '; ') + "_`n" } else { '' }
     $content = "---`ncolor: `"#CFE8FF`"`ncreated: {0}`n---`n`n{1}{2}{3}" -f $today.ToString('yyyy-MM-ddTHH:mm:sszzz'), $header, $Body.Trim(), $failures
     $tmp = Join-Path $folder 'note.md.tmp'
@@ -289,8 +337,14 @@ if (-not $body) { $body = Format-Fallback $raw }
 
 $written = Write-Note $dataDir $body
 Write-Log "Wrote $written"
-if ($script:Failures) {
-    Write-Log "Finished with $($script:Failures.Count) failure(s)"
+if ($script:ClaudeNeedsLogin) {
+    # A retry cannot fix an expired login; the note tells the user how to. Exit 0 so Task Scheduler
+    # does not retry, unless something else also failed.
+    Write-Log 'Claude login expired; the note offers a fix'
+}
+$retryable = @($script:Failures | Where-Object { $_ -notlike 'Claude: *login expired*' })
+if ($retryable) {
+    Write-Log "Finished with $($retryable.Count) retryable failure(s)"
     exit 1
 }
 Write-Log 'Finished'
