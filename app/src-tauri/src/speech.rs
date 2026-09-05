@@ -4,6 +4,10 @@
 use serde::Serialize;
 use tauri::{AppHandle, Emitter};
 
+/// Windows returns SPERR_SPEECH_PRIVACY_POLICY_NOT_ACCEPTED until "Online speech recognition" is
+/// switched on under Settings > Privacy & security > Speech. The UI recognises this prefix.
+pub const PRIVACY_ERROR: &str = "SPEECH_PRIVACY";
+
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DictationEvent {
@@ -71,7 +75,13 @@ mod imp {
                 },
             ))
             .map_err(|e| e.to_string())?;
-        session.StartAsync().map_err(|e| e.to_string())?.get().map_err(|e| e.to_string())?;
+        session.StartAsync().map_err(|e| e.to_string())?.get().map_err(|e| {
+            if e.code().0 as u32 == 0x8004_5509 {
+                PRIVACY_ERROR.to_string()
+            } else {
+                e.to_string()
+            }
+        })?;
         *ACTIVE.lock().unwrap() = Some(Session { recognizer, session });
         Ok(())
     }

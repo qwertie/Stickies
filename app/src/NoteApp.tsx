@@ -1,7 +1,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { getCurrentWindow } from '@tauri-apps/api/window';
-import { openPath } from '@tauri-apps/plugin-opener';
+import { ask } from '@tauri-apps/plugin-dialog';
 import type { Editor } from '@tiptap/core';
 import { EditorContent, useEditor } from '@tiptap/react';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -20,6 +20,13 @@ interface NoteLoad {
   content: string;
   dataDir: string;
   noteDir: string;
+  defaults: { defaultColor: string; defaultFont: string; defaultFontSize: number };
+}
+
+interface Defaults {
+  color: string;
+  font: string;
+  fontSize: number;
 }
 
 interface NoteChanged {
@@ -29,7 +36,7 @@ interface NoteChanged {
 
 export function NoteApp({ folder, label }: { folder: string; label: string }) {
   const [meta, setMetaState] = useState<NoteMeta>({});
-  const [noteDir, setNoteDirState] = useState('');
+  const [defaults, setDefaults] = useState<Defaults>({ color: DEFAULT_COLOR, font: 'Segoe UI', fontSize: 14 });
   const [dictating, setDictating] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const metaRef = useRef<NoteMeta>({});
@@ -51,7 +58,7 @@ export function NoteApp({ folder, label }: { folder: string; label: string }) {
       handleDoubleClickOn: (_view, _pos, node) => {
         const rel = node.type.name === 'attachment' ? String(node.attrs.href) : node.type.name === 'image' ? String(node.attrs.src) : '';
         if (rel) {
-          void invoke<string>('resolve_attachment', { folder, rel: rel.replace(/\/$/, '') }).then((abs) => openPath(abs));
+          void invoke('open_in_explorer', { folder, rel: rel.replace(/\/$/, '') });
           return true;
         }
         return false;
@@ -97,7 +104,7 @@ export function NoteApp({ folder, label }: { folder: string; label: string }) {
     void invoke<NoteLoad>('load_note', { folder }).then((load) => {
       if (!cancelled) {
         setNoteDir(load.noteDir);
-        setNoteDirState(load.noteDir);
+        setDefaults({ color: load.defaults.defaultColor, font: load.defaults.defaultFont, fontSize: load.defaults.defaultFontSize });
         applyContent(load.content);
         setLoaded(true);
       }
@@ -181,7 +188,7 @@ export function NoteApp({ folder, label }: { folder: string; label: string }) {
           stopDictationRef.current = undefined;
           setDictating(false);
           if (error) {
-            editor.commands.insertContent(`[dictation stopped: ${error}] `);
+            void explainDictationError(error);
           }
         },
       );
@@ -195,10 +202,10 @@ export function NoteApp({ folder, label }: { folder: string; label: string }) {
     }
     const { from, to } = editor.state.selection;
     const selectedText = editor.state.doc.textBetween(from, to, '\n');
-    void showContextMenu(noteDir, {
-      color: meta.color ?? DEFAULT_COLOR,
-      font: meta.font ?? 'Segoe UI',
-      fontSize: Number(meta.fontSize ?? 14),
+    void showContextMenu({
+      color: meta.color ?? defaults.color,
+      font: meta.font ?? defaults.font,
+      fontSize: Number(meta.fontSize ?? defaults.fontSize),
       dictating,
       hasSelection: from !== to,
       setMeta,
@@ -210,15 +217,16 @@ export function NoteApp({ folder, label }: { folder: string; label: string }) {
       speak: () => speak(selectedText || editor.getText()),
       stopSpeaking,
       toggleDictation: () => void toggleDictation(),
+      openFolder: () => void invoke('open_in_explorer', { folder, rel: null }),
       close: closeNote,
     });
   };
 
-  const color = meta.color ?? DEFAULT_COLOR;
+  const color = meta.color ?? defaults.color;
   const style: React.CSSProperties = {
     background: color,
-    fontFamily: meta.font ?? 'Segoe UI',
-    fontSize: `${meta.fontSize ?? 14}pt`,
+    fontFamily: meta.font ?? defaults.font,
+    fontSize: `${meta.fontSize ?? defaults.fontSize}pt`,
   };
 
   return (
@@ -231,6 +239,21 @@ export function NoteApp({ folder, label }: { folder: string; label: string }) {
       <EditorContent editor={editor} className="editor-host" />
     </div>
   );
+}
+
+async function explainDictationError(error: string) {
+  if (error.includes('SPEECH_PRIVACY')) {
+    const go = await ask(
+      'Windows only allows dictation after "Online speech recognition" is turned on under ' +
+        'Settings > Privacy & security > Speech.\n\nOpen that settings page now?',
+      { title: 'Dictation needs a Windows setting', kind: 'warning', okLabel: 'Open Settings', cancelLabel: 'Not now' },
+    );
+    if (go) {
+      await invoke('open_speech_settings');
+    }
+  } else {
+    await ask(`Dictation stopped: ${error}`, { title: 'Dictation', kind: 'error', okLabel: 'OK', cancelLabel: 'Close' });
+  }
 }
 
 function preventDefault(event: Event): boolean {

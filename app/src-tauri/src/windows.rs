@@ -131,12 +131,31 @@ fn force_tiny_size(window: &WebviewWindow) {
 #[cfg(not(windows))]
 fn force_tiny_size(_: &WebviewWindow) {}
 
+pub const OPTIONS_LABEL: &str = "options";
+
+pub fn open_options(app: &AppHandle) -> Result<(), String> {
+    if let Some(existing) = app.get_webview_window(OPTIONS_LABEL) {
+        existing.set_focus().map_err(|e| e.to_string())?;
+        return Ok(());
+    }
+    WebviewWindowBuilder::new(app, OPTIONS_LABEL, WebviewUrl::App("index.html".into()))
+        .title("Stickies Options")
+        .inner_size(460.0, 420.0)
+        .resizable(false)
+        .center()
+        .initialization_script("window.__STICKIES__ = { options: true };")
+        .build()
+        .map(|_| ())
+        .map_err(|e| e.to_string())
+}
+
 pub fn build_tray(app: &AppHandle) -> tauri::Result<()> {
     let new_note = MenuItem::with_id(app, "new", "New note", true, None::<&str>)?;
     let show_all = MenuItem::with_id(app, "show", "Bring all notes to front", true, None::<&str>)?;
     let open_dir = MenuItem::with_id(app, "folder", "Open data folder", true, None::<&str>)?;
+    let options = MenuItem::with_id(app, "options", "Options…", true, None::<&str>)?;
     let quit = MenuItem::with_id(app, "quit", "Quit Stickies", true, None::<&str>)?;
-    let menu = Menu::with_items(app, &[&new_note, &show_all, &open_dir, &quit])?;
+    let menu = Menu::with_items(app, &[&new_note, &show_all, &open_dir, &options, &quit])?;
     TrayIconBuilder::new()
         .icon(app.default_window_icon().unwrap().clone())
         .tooltip("Stickies")
@@ -150,6 +169,9 @@ pub fn build_tray(app: &AppHandle) -> tauri::Result<()> {
             "folder" => {
                 let dir = app.state::<AppState>().store.data_dir.clone();
                 tauri_plugin_opener::open_path(dir, None::<&str>).ok();
+            }
+            "options" => {
+                open_options(app).ok();
             }
             "quit" => crate::quit(app),
             _ => {}

@@ -21,6 +21,8 @@
     "opener:allow-open-path",
     "opener:allow-reveal-item-in-dir",
     "dialog:allow-open",
+    "dialog:allow-ask",
+    "dialog:allow-message",
     "autostart:default"
   ]
 }

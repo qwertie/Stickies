@@ -6,14 +6,32 @@ use chrono::{DateTime, Local, Utc};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 
-pub const ARCHIVE_DAYS: i64 = 30;
 pub const DEFAULT_COLOR: &str = "#FFF7B1";
 
-#[derive(Clone, Serialize, Deserialize, Default)]
-#[serde(rename_all = "camelCase")]
+/// User settings, stored in `%APPDATA%\Stickies\config.json`.
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
 pub struct Config {
     pub data_dir: Option<PathBuf>,
+    pub default_color: String,
+    pub default_font: String,
+    pub default_font_size: u32,
+    /// Days a closed note stays in the archive before it is deleted for good.
+    pub archive_days: u32,
+}
+
+impl Default for Config {
+    fn default() -> Config {
+        Config {
+            data_dir: None,
+            default_color: DEFAULT_COLOR.to_string(),
+            default_font: "Segoe UI".to_string(),
+            default_font_size: 14,
+            archive_days: 30,
+        }
+    }
 }
 
 #[derive(Clone, Serialize)]
@@ -43,15 +61,21 @@ pub struct ImportedFile {
 
 pub struct Store {
     pub data_dir: PathBuf,
+    pub config: Mutex<Config>,
 }
 
 impl Store {
     pub fn open() -> Store {
-        let data_dir = load_config().data_dir.unwrap_or_else(default_data_dir);
-        let store = Store { data_dir };
+        let config = load_config();
+        let data_dir = config.data_dir.clone().unwrap_or_else(default_data_dir);
+        let store = Store { data_dir, config: Mutex::new(config) };
         fs::create_dir_all(store.notes_dir()).ok();
         fs::create_dir_all(store.archive_dir()).ok();
         store
+    }
+
+    pub fn config(&self) -> Config {
+        self.config.lock().unwrap().clone()
     }
 
     pub fn notes_dir(&self) -> PathBuf {
@@ -103,14 +127,26 @@ impl Store {
             n += 1;
             folder = format!("{base}-{n}");
         }
-        let content = format!("---\ncolor: \"{}\"\ncreated: {}\n---\n\n", DEFAULT_COLOR, now_iso());
+        let c = self.config();
+        let content = format!(
+            "---\ncolor: \"{}\"\nfont: {}\nfontSize: {}\ncreated: {}\n---\n\n",
+            c.default_color,
+            c.default_font,
+            c.default_font_size,
+            now_iso()
+        );
         self.write_note(&folder, &content)?;
         Ok(folder)
     }
 
+    /// Moves a closed note to the archive; an empty note (no text, no attachments) is just deleted.
     pub fn archive_note(&self, folder: &str) -> Result<(), String> {
         let src = self.note_dir(folder);
         let content = fs::read_to_string(src.join("note.md")).unwrap_or_default();
+        let has_attachments = fs::read_dir(src.join("attachments")).map(|mut d| d.next().is_some()).unwrap_or(false);
+        if body_of(&content).trim().is_empty() && !has_attachments {
+            return fs::remove_dir_all(&src).map_err(|e| e.to_string());
+        }
         let content = set_frontmatter(&content, "archived", &now_iso());
         fs::write(src.join("note.md"), content).map_err(|e| e.to_string())?;
         let dest = unique_dest(&self.archive_dir(), folder);
@@ -143,7 +179,7 @@ impl Store {
     }
 
     pub fn purge_archive(&self) {
-        let cutoff = Utc::now() - chrono::Duration::days(ARCHIVE_DAYS);
+        let cutoff = Utc::now() - chrono::Duration::days(self.config().archive_days as i64);
         for info in self.list_archived() {
             let archived_at = DateTime::parse_from_rfc3339(&info.archived).map(|d| d.with_timezone(&Utc));
             if let Ok(when) = archived_at {
@@ -265,13 +301,17 @@ fn frontmatter_lines(content: &str) -> impl Iterator<Item = &str> {
         .lines()
 }
 
-fn title_of(content: &str) -> String {
-    let body = content
+fn body_of(content: &str) -> &str {
+    content
         .strip_prefix("---\n")
         .and_then(|rest| rest.split_once("\n---"))
         .map(|(_, body)| body)
-        .unwrap_or(content);
-    body.lines()
+        .unwrap_or(content)
+}
+
+fn title_of(content: &str) -> String {
+    body_of(content)
+        .lines()
         .map(|l| l.trim_start_matches(['#', ' ', '-', '*', '>']).trim())
         .find(|l| !l.is_empty())
         .unwrap_or("(empty note)")

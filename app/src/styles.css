@@ -146,3 +146,93 @@ body {
 .attachment:hover {
   background: rgba(255, 255, 255, 0.85);
 }
+
+/* Options window */
+.options-body {
+  background: #f6f6f6;
+  user-select: text;
+}
+
+.options {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px 18px;
+  font-size: 13px;
+  color: #222;
+}
+
+.options label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-weight: 600;
+}
+
+.options select, .options input[type="text"], .options input[type="number"] {
+  font: inherit;
+  font-weight: normal;
+  padding: 4px 6px;
+}
+
+.options input[type="number"] {
+  width: 60px;
+}
+
+.options input[type="text"] {
+  flex: 1;
+}
+
+.options .inline {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: normal;
+}
+
+.options small {
+  font-weight: normal;
+  color: #666;
+}
+
+.swatches {
+  display: flex;
+  gap: 6px;
+}
+
+.swatch {
+  width: 28px;
+  height: 28px;
+  border: 2px solid rgba(0, 0, 0, 0.15);
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.swatch.selected {
+  border-color: #1a4fa3;
+  box-shadow: 0 0 0 2px rgba(26, 79, 163, 0.35);
+}
+
+.options .buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.options button {
+  font: inherit;
+  padding: 5px 14px;
+  cursor: pointer;
+}
+
+.options button.primary {
+  background: #1a4fa3;
+  color: white;
+  border: 1px solid #143c7c;
+}
+
+.options .error {
+  color: #b00020;
+  margin: 0;
+}

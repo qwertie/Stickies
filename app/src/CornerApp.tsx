@@ -29,6 +29,7 @@ async function showCornerMenu() {
       item('Bring all notes to front (click)', 'raise_all'),
       item('Show last-used note (hover)', 'focus_latest'),
       PredefinedMenuItem.new({ item: 'Separator' }),
+      item('Options…', 'open_options'),
       item('Quit Stickies', 'quit_app'),
     ]),
   });

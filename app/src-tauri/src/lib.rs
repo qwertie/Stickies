@@ -15,7 +15,7 @@ use tauri::{AppHandle, Emitter, Manager, State};
 use tauri_plugin_autostart::ManagerExt;
 
 use layout::Rect;
-use store::{ArchivedInfo, ImportedFile, Store};
+use store::{ArchivedInfo, Config, ImportedFile, Store};
 
 pub struct AppState {
     pub store: Store,
@@ -37,6 +37,7 @@ pub struct NoteLoad {
     content: String,
     data_dir: PathBuf,
     note_dir: PathBuf,
+    defaults: Config,
 }
 
 #[derive(Serialize)]
@@ -78,12 +79,14 @@ pub fn run() {
             import_clipboard_files,
             read_clipboard_for_paste,
             copy_to_clipboard,
-            resolve_attachment,
+            open_in_explorer,
+            open_speech_settings,
             save_layout,
             raise_all,
             focus_latest,
-            get_data_dir,
-            change_data_dir,
+            get_settings,
+            save_settings,
+            open_options,
             start_dictation,
             stop_dictation,
             quit_app,
@@ -134,7 +137,12 @@ pub fn create_and_open(app: &AppHandle) -> Result<String, String> {
 fn load_note(state: State<AppState>, folder: String) -> Result<NoteLoad, String> {
     let content = state.store.read_note(&folder)?;
     state.last_written.lock().unwrap().insert(folder.clone(), content.clone());
-    Ok(NoteLoad { content, data_dir: state.store.data_dir.clone(), note_dir: state.store.note_dir(&folder) })
+    Ok(NoteLoad {
+        content,
+        data_dir: state.store.data_dir.clone(),
+        note_dir: state.store.note_dir(&folder),
+        defaults: state.store.config(),
+    })
 }
 
 #[tauri::command]
@@ -211,9 +219,54 @@ fn copy_to_clipboard(
     clipboard::write(&text, html.as_deref(), &paths)
 }
 
+/// Opens a note folder, or an attachment inside it, with the shell (Explorer or the file's default
+/// program). Done in Rust because the opener plugin's JS side needs a static path allow-list.
 #[tauri::command]
-fn resolve_attachment(state: State<AppState>, folder: String, rel: String) -> PathBuf {
-    state.store.resolve(&folder, &rel)
+fn open_in_explorer(state: State<AppState>, folder: String, rel: Option<String>) -> Result<(), String> {
+    let path = match rel {
+        Some(rel) => state.store.resolve(&folder, &rel),
+        None => state.store.note_dir(&folder),
+    };
+    tauri_plugin_opener::open_path(path, None::<&str>).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn open_speech_settings() -> Result<(), String> {
+    tauri_plugin_opener::open_url("ms-settings:privacy-speech", None::<&str>).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn get_settings(state: State<AppState>) -> Config {
+    state.store.config()
+}
+
+/// Saves settings. A changed data folder moves the notes there (if the target is empty) and
+/// restarts the app so the watcher and windows follow.
+#[tauri::command]
+fn save_settings(app: AppHandle, state: State<AppState>, mut settings: Config) -> Result<(), String> {
+    settings.archive_days = settings.archive_days.max(1);
+    let new_dir = settings.data_dir.clone().unwrap_or_else(store::default_data_dir);
+    let moving = new_dir != state.store.data_dir;
+    if moving && !new_dir.join("notes").exists() {
+        std::fs::create_dir_all(&new_dir).map_err(|e| e.to_string())?;
+        for sub in ["notes", "archive"] {
+            let src = state.store.data_dir.join(sub);
+            if src.exists() {
+                std::fs::rename(&src, new_dir.join(sub)).map_err(|e| e.to_string())?;
+            }
+        }
+    }
+    store::save_config(&settings)?;
+    *state.store.config.lock().unwrap() = settings;
+    if moving {
+        app.restart();
+    }
+    Ok(())
+}
+
+#[tauri::command]
+async fn open_options(app: AppHandle) -> Result<(), String> {
+    windows::open_options(&app)
 }
 
 /// Records where the user put a window. Moves the app made itself (clamping) are ignored so the
@@ -235,32 +288,6 @@ fn raise_all(app: AppHandle) {
 #[tauri::command]
 fn focus_latest(app: AppHandle) {
     windows::focus_latest(&app);
-}
-
-#[tauri::command]
-fn get_data_dir(state: State<AppState>) -> PathBuf {
-    state.store.data_dir.clone()
-}
-
-/// Points the app at a new data folder, moving the current notes there if it is empty, then
-/// restarts so the watcher and windows pick up the new location.
-#[tauri::command]
-fn change_data_dir(app: AppHandle, state: State<AppState>, path: PathBuf) -> Result<(), String> {
-    if path != state.store.data_dir {
-        let target_empty = !path.join("notes").exists();
-        if target_empty {
-            std::fs::create_dir_all(&path).map_err(|e| e.to_string())?;
-            for sub in ["notes", "archive"] {
-                let src = state.store.data_dir.join(sub);
-                if src.exists() {
-                    std::fs::rename(&src, path.join(sub)).map_err(|e| e.to_string())?;
-                }
-            }
-        }
-        store::save_config(&store::Config { data_dir: Some(path) })?;
-        app.restart();
-    }
-    Ok(())
 }
 
 #[tauri::command]
