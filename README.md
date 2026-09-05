@@ -27,7 +27,7 @@ only (no admin rights needed), starts Stickies, and makes it start with Windows.
 PowerShell:
 
 ```powershell
-git clone https://github.com/<owner>/Stickies.git
+git clone https://github.com/qwertie/Stickies.git
 cd Stickies\app
 npm install
 npm run tauri build
