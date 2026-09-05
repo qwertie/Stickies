@@ -1,5 +1,7 @@
 //! Speech-to-text through Windows.Media.SpeechRecognition (dictation topic). Recognized phrases
-//! are emitted to the requesting window as `dictation` events.
+//! are emitted to the requesting window as `dictation` events. Other platforms have no engine yet,
+//! so the event plumbing is unused there.
+#![cfg_attr(not(windows), allow(dead_code))]
 
 use serde::Serialize;
 use tauri::{AppHandle, Emitter};
