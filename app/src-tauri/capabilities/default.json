@@ -1,0 +1,26 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "All windows of the app",
+  "windows": ["*"],
+  "permissions": [
+    "core:default",
+    "core:window:allow-start-dragging",
+    "core:window:allow-close",
+    "core:window:allow-set-focus",
+    "core:window:allow-set-always-on-top",
+    "core:window:allow-outer-position",
+    "core:window:allow-outer-size",
+    "core:window:allow-set-position",
+    "core:window:allow-set-size",
+    "core:window:allow-minimize",
+    "core:webview:allow-internal-toggle-devtools",
+    "core:menu:default",
+    "core:event:default",
+    "core:app:default",
+    "opener:allow-open-path",
+    "opener:allow-reveal-item-in-dir",
+    "dialog:allow-open",
+    "autostart:default"
+  ]
+}

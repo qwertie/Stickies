@@ -1,0 +1,10 @@
+node_modules/
+dist/
+app/src-tauri/target/
+app/src-tauri/gen/schemas/
+morning-report/config.json
+morning-report/logs/
+morning-report/*.raw.json
+build.log
+*.log
+.DS_Store

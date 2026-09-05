@@ -1,0 +1,21 @@
+{
+  "dataDir": null,
+  "claudeModel": "sonnet",
+  "repos": ["C:\\Dev\\Barreleye"],
+  "t3WorktreesRoot": "%USERPROFILE%\\.t3\\worktrees",
+  "ado": {
+    "organization": "barreleye",
+    "project": "barreleye",
+    "team": null,
+    "patEnvVar": "ADO_PAT",
+    "doneStates": ["Done", "Removed", "Closed", "Ready for Testing"],
+    "workItemTypes": ["Product Backlog Item", "Bug", "Task"]
+  },
+  "email": {
+    "enabled": true,
+    "days": 7,
+    "maxMessages": 150,
+    "ignoreSenderPatterns": ["noreply", "no-reply", "donotreply", "do-not-reply", "notification", "mailer-daemon", "newsletter", "marketing", "digest"],
+    "ignoreDomains": ["linkedin.com", "medium.com", "substack.com"]
+  }
+}
