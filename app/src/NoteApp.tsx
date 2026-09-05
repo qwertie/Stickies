@@ -2,7 +2,6 @@ import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { getCurrentWebview } from '@tauri-apps/api/webview';
 import { getCurrentWindow } from '@tauri-apps/api/window';
-import { message } from '@tauri-apps/plugin-dialog';
 import type { Editor } from '@tiptap/core';
 import { EditorContent, useEditor } from '@tiptap/react';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -12,7 +11,7 @@ import { copySelection, dropFiles, handlePaste, openAttachmentAt, pasteFromMenu 
 import { createExtensions } from './editor/extensions';
 import { showContextMenu } from './menu';
 import { DEFAULT_COLOR, parseNote, serializeNote, type NoteMeta } from './noteFile';
-import { speak, stopSpeaking, toggleDictation } from './speech';
+import { speak, stopSpeaking } from './speech';
 
 const SAVE_DELAY_MS = 1000;
 const LAYOUT_DELAY_MS = 500;
@@ -180,14 +179,6 @@ export function NoteApp({ folder }: { folder: string }) {
     void invoke('close_note', { folder });
   };
 
-  const dictate = async () => {
-    editor?.commands.focus();
-    const error = await toggleDictation();
-    if (error) {
-      await message(error, { title: 'Dictation', kind: 'error' });
-    }
-  };
-
   const onContextMenu = (e: React.MouseEvent) => {
     e.preventDefault();
     if (!editor) {
@@ -208,7 +199,6 @@ export function NoteApp({ folder }: { folder: string }) {
       paste: () => void pasteFromMenu(editor, folder),
       speak: () => speak(selectedText || editor.getText()),
       stopSpeaking,
-      dictate: () => void dictate(),
       openFolder: () => void invoke('open_in_explorer', { folder, rel: null }),
       close: closeNote,
     });

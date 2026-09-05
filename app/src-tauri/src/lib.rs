@@ -1,6 +1,5 @@
 mod clipboard;
 mod layout;
-mod speech;
 mod store;
 mod watcher;
 mod windows;
@@ -89,7 +88,6 @@ pub fn run() {
             save_settings,
             open_options,
             show_app_menu,
-            toggle_dictation,
             quit_app,
         ])
         .setup(|app| {
@@ -311,11 +309,6 @@ fn focus_latest(app: AppHandle) {
 #[tauri::command]
 fn quit_app(app: AppHandle) {
     quit(&app);
-}
-
-#[tauri::command]
-fn toggle_dictation() -> Result<(), String> {
-    speech::toggle_voice_typing()
 }
 
 fn spawn_monitor_poll(app: AppHandle) {

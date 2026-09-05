@@ -34,7 +34,6 @@ export interface MenuActions {
   paste(): void;
   speak(): void;
   stopSpeaking(): void;
-  dictate(): void;
   openFolder(): void;
   close(): void;
 }
@@ -55,7 +54,6 @@ export async function showContextMenu(a: MenuActions) {
     items: await Promise.all([
       item(a.hasSelection ? 'Speak selection' : 'Speak note', a.speak),
       item('Stop speaking', a.stopSpeaking),
-      item('Dictate (Windows voice typing)\tWin+H', a.dictate),
       separator(),
       Submenu.new({
         text: 'Color',

@@ -44,14 +44,12 @@ need the packages listed in `.github/workflows/build.yml` under "Linux build dep
 
 - **Make a note:** click **+** in a note's title bar, press **Ctrl+N**, or use the tray icon.
   New notes appear on the right side of the screen, each 200 px below the previous one.
-- **Right-click a note** for everything else: speak the note (or just the selected text), dictate,
+- **Right-click a note** for everything else: speak the note (or just the selected text),
   colors, fonts and sizes, restore an archived note, open the note's folder, close (archive) the
   note, and the usual undo/cut/copy/paste.
 - **Right-click the corner dot** for **Options…**: default color, font and size for new notes, which
   side of the screen new notes appear on, how
   many days closed notes are kept before deletion (30 by default), and where notes are stored.
-- **Dictation** opens Windows voice typing (the same panel as Win+H) with the note focused, so
-  speech is typed straight into the note. Say "stop dictating" or press Win+H again to finish.
 - **Paste or drop anything.** Paste from the clipboard or drag files and folders in from
   Explorer. Images appear inline; files and folders appear as small chips. Double-click a chip or
   image to open it with its default program. Select chips along with text and copy: the files are
@@ -89,7 +87,7 @@ machines yet.
 | Copy chips: text + HTML + real files at once | Yes | Files only when the selection contains attachments, otherwise text + HTML | Same as macOS |
 | Paste image from context menu | .bmp | .png | .png |
 | Text to speech | Windows voices | macOS voices | Only if speech-dispatcher is installed |
-| Speech to text (dictation) | Windows voice typing (Win+H) | Not yet (macOS has Dictation under Edit > Start Dictation, or press the Mic key) | Not available |
+| Speech to text | Not built in; Windows voice typing (Win+H) works in any note | Not built in; macOS Dictation works in any note | Not built in |
 | Always on top / raise all | Yes | Yes | X11 yes; Wayland partially |
 
 Linux users on Wayland who want the Windows-style behaviour can force X11 with
