@@ -39,6 +39,7 @@ export function NoteApp({ folder, label }: { folder: string; label: string }) {
   const [meta, setMetaState] = useState<NoteMeta>({});
   const [defaults, setDefaults] = useState<Defaults>({ color: DEFAULT_COLOR, font: 'Segoe UI', fontSize: 14 });
   const [dictating, setDictating] = useState(false);
+  const [hypothesis, setHypothesis] = useState('');
   const [loaded, setLoaded] = useState(false);
   const metaRef = useRef<NoteMeta>({});
   const lastSaved = useRef('');
@@ -187,20 +188,25 @@ export function NoteApp({ folder, label }: { folder: string; label: string }) {
     if (stopDictationRef.current) {
       stopDictationRef.current();
       stopDictationRef.current = undefined;
-      setDictating(false);
+      setHypothesis('stopping…');
     } else if (editor) {
       setDictating(true);
-      stopDictationRef.current = await startDictation(
-        label,
-        (text) => editor.commands.insertContent(`${text} `),
-        (error) => {
+      setHypothesis('listening…');
+      stopDictationRef.current = await startDictation(label, {
+        onText: (text) => {
+          editor.commands.insertContent(`${text} `);
+          setHypothesis('');
+        },
+        onHypothesis: setHypothesis,
+        onEnd: (error) => {
           stopDictationRef.current = undefined;
           setDictating(false);
+          setHypothesis('');
           if (error) {
             void explainDictationError(error);
           }
         },
-      );
+      });
     }
   };
 
@@ -242,7 +248,9 @@ export function NoteApp({ folder, label }: { folder: string; label: string }) {
     <div className="note" style={style} onContextMenu={onContextMenu}>
       <div className="titlebar" data-tauri-drag-region style={{ background: darken(color) }}>
         <button className="titlebar-btn" title="New note (Ctrl+N)" onClick={() => void invoke('create_note')}>+</button>
-        <span className="titlebar-title" data-tauri-drag-region>{dictating ? '● dictating' : ''}</span>
+        <span className="titlebar-title" data-tauri-drag-region title={hypothesis}>
+          {dictating ? `● ${hypothesis || 'dictating'}` : ''}
+        </span>
         <button className="titlebar-btn" title="Close (archive for 30 days)" onClick={closeNote}>×</button>
       </div>
       <EditorContent editor={editor} className="editor-host" />

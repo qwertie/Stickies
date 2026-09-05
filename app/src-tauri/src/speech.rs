@@ -10,10 +10,13 @@ use tauri::{AppHandle, Emitter};
 /// switched on under Settings > Privacy & security > Speech. The UI recognises this prefix.
 pub const PRIVACY_ERROR: &str = "SPEECH_PRIVACY";
 
-#[derive(Clone, Serialize)]
+#[derive(Clone, Serialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct DictationEvent {
+    /// A finished phrase to insert.
     pub text: Option<String>,
+    /// Words recognised so far in the phrase still being spoken (display only).
+    pub hypothesis: Option<String>,
     pub error: Option<String>,
     pub ended: bool,
 }
@@ -22,12 +25,14 @@ pub struct DictationEvent {
 mod imp {
     use super::*;
     use std::sync::Mutex;
+    use std::time::Duration;
     use windows::core::HSTRING;
-    use windows::Foundation::TypedEventHandler;
+    use windows::Foundation::{TimeSpan, TypedEventHandler};
     use windows::Media::SpeechRecognition::*;
 
+    /// Kept alive while dictating; the recognizer owns the session and its event handlers.
     pub struct Session {
-        recognizer: SpeechRecognizer,
+        _recognizer: SpeechRecognizer,
         session: SpeechContinuousRecognitionSession,
     }
 
@@ -47,18 +52,23 @@ mod imp {
             .map_err(|e| e.to_string())?
             .get()
             .map_err(|e| e.to_string())?;
-        if compiled.Status().map_err(|e| e.to_string())? != SpeechRecognitionResultStatus::Success {
-            return Err("Speech recognition constraints failed to compile".into());
+        let status = compiled.Status().map_err(|e| e.to_string())?;
+        if status != SpeechRecognitionResultStatus::Success {
+            return Err(format!("constraints failed to compile: {}", status_name(status)));
         }
         let session = recognizer.ContinuousRecognitionSession().map_err(|e| e.to_string())?;
+        // Default is 20 s of silence, after which the session quietly ends.
+        session
+            .SetAutoStopSilenceTimeout(TimeSpan { Duration: 10 * 60 * 10_000_000 })
+            .map_err(|e| e.to_string())?;
 
         let (app1, label1) = (app.clone(), label.clone());
-        session
-            .ResultGenerated(&TypedEventHandler::new(
-                move |_, args: windows::core::Ref<SpeechContinuousRecognitionResultGeneratedEventArgs>| {
+        recognizer
+            .HypothesisGenerated(&TypedEventHandler::new(
+                move |_, args: windows::core::Ref<SpeechRecognitionHypothesisGeneratedEventArgs>| {
                     if let Some(args) = args.as_ref() {
-                        let text = args.Result()?.Text()?.to_string();
-                        emit(&app1, &label1, Some(text), None, false);
+                        let text = args.Hypothesis()?.Text()?.to_string();
+                        emit(&app1, &label1, DictationEvent { hypothesis: Some(text), ..Default::default() });
                     }
                     Ok(())
                 },
@@ -66,13 +76,35 @@ mod imp {
             .map_err(|e| e.to_string())?;
         let (app2, label2) = (app.clone(), label.clone());
         session
+            .ResultGenerated(&TypedEventHandler::new(
+                move |_, args: windows::core::Ref<SpeechContinuousRecognitionResultGeneratedEventArgs>| {
+                    if let Some(args) = args.as_ref() {
+                        let result = args.Result()?;
+                        let text = result.Text()?.to_string();
+                        log::info!("dictation result ({:?}): {text}", result.Confidence());
+                        if !text.is_empty() {
+                            emit(&app2, &label2, DictationEvent { text: Some(text), ..Default::default() });
+                        }
+                    }
+                    Ok(())
+                },
+            ))
+            .map_err(|e| e.to_string())?;
+        let (app3, label3) = (app.clone(), label.clone());
+        session
             .Completed(&TypedEventHandler::new(
                 move |_, args: windows::core::Ref<SpeechContinuousRecognitionCompletedEventArgs>| {
                     let status = args.as_ref().and_then(|a| a.Status().ok());
-                    let error = status
-                        .filter(|s| *s != SpeechRecognitionResultStatus::Success)
-                        .map(|s| format!("{s:?}"));
-                    emit(&app2, &label2, None, error, true);
+                    log::info!("dictation session completed: {:?}", status.map(status_name));
+                    let error = match status {
+                        None
+                        | Some(SpeechRecognitionResultStatus::Success)
+                        | Some(SpeechRecognitionResultStatus::UserCanceled)
+                        | Some(SpeechRecognitionResultStatus::TimeoutExceeded)
+                        | Some(SpeechRecognitionResultStatus::PauseLimitExceeded) => None,
+                        Some(other) => Some(status_name(other).to_string()),
+                    };
+                    emit(&app3, &label3, DictationEvent { error, ended: true, ..Default::default() });
                     Ok(())
                 },
             ))
@@ -84,16 +116,40 @@ mod imp {
                 e.to_string()
             }
         })?;
-        *ACTIVE.lock().unwrap() = Some(Session { recognizer, session });
+        log::info!("dictation started for {label}");
+        *ACTIVE.lock().unwrap() = Some(Session { _recognizer: recognizer, session });
         Ok(())
     }
 
+    /// Stops listening. StopAsync (unlike CancelAsync) still delivers results for audio already
+    /// captured, so the recognizer is kept alive a moment for those events to arrive.
     pub fn stop() {
         if let Some(active) = ACTIVE.lock().unwrap().take() {
             if let Ok(op) = active.session.StopAsync() {
                 op.get().ok();
             }
-            drop(active.recognizer);
+            std::thread::spawn(move || {
+                std::thread::sleep(Duration::from_millis(1500));
+                drop(active);
+            });
+        }
+    }
+
+    fn status_name(status: SpeechRecognitionResultStatus) -> &'static str {
+        match status {
+            SpeechRecognitionResultStatus::Success => "success",
+            SpeechRecognitionResultStatus::TopicLanguageNotSupported => "the speech language is not supported for dictation",
+            SpeechRecognitionResultStatus::GrammarLanguageMismatch => "grammar language mismatch",
+            SpeechRecognitionResultStatus::GrammarCompilationFailure => "grammar compilation failure",
+            SpeechRecognitionResultStatus::AudioQualityFailure => "audio quality too low",
+            SpeechRecognitionResultStatus::UserCanceled => "stopped",
+            SpeechRecognitionResultStatus::TimeoutExceeded => "silence timeout",
+            SpeechRecognitionResultStatus::PauseLimitExceeded => "pause limit exceeded",
+            SpeechRecognitionResultStatus::NetworkFailure => "network failure (dictation uses Microsoft's online service)",
+            SpeechRecognitionResultStatus::MicrophoneUnavailable => {
+                "microphone unavailable (check Settings > Privacy & security > Microphone, including 'Let desktop apps access your microphone')"
+            }
+            _ => "unknown failure",
         }
     }
 }
@@ -107,8 +163,8 @@ mod imp {
     pub fn stop() {}
 }
 
-fn emit(app: &AppHandle, label: &str, text: Option<String>, error: Option<String>, ended: bool) {
-    app.emit_to(label, "dictation", DictationEvent { text, error, ended }).ok();
+fn emit(app: &AppHandle, label: &str, event: DictationEvent) {
+    app.emit_to(label, "dictation", event).ok();
 }
 
 pub use imp::{start, stop};

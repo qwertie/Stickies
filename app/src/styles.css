@@ -38,6 +38,9 @@ body {
   text-align: center;
   font-family: 'Segoe UI', sans-serif;
   letter-spacing: 0.5px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 .titlebar-btn {

@@ -3,6 +3,7 @@ import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 
 interface DictationEvent {
   text: string | null;
+  hypothesis: string | null;
   error: string | null;
   ended: boolean;
 }
@@ -20,33 +21,46 @@ export function stopSpeaking() {
   speechSynthesis.cancel();
 }
 
-/** Starts Windows dictation for this window; returns a function that stops it. */
-export async function startDictation(
-  label: string,
-  onText: (text: string) => void,
-  onEnd: (error: string | null) => void,
-): Promise<() => void> {
+export interface DictationCallbacks {
+  onText(text: string): void;
+  onHypothesis(text: string): void;
+  onEnd(error: string | null): void;
+}
+
+/**
+ * Starts Windows dictation for this window; returns a function that stops it. Stopping keeps
+ * listening for events until the engine reports the session ended, so the last phrase spoken
+ * before Stop still gets inserted.
+ */
+export async function startDictation(label: string, cb: DictationCallbacks): Promise<() => void> {
   let unlisten: UnlistenFn | undefined;
-  const stop = () => {
-    unlisten?.();
-    unlisten = undefined;
-    void invoke('stop_dictation');
-  };
-  unlisten = await listen<DictationEvent>('dictation', (e) => {
-    if (e.payload.text) {
-      onText(e.payload.text);
-    }
-    if (e.payload.ended) {
+  let finished = false;
+  const finish = (error: string | null) => {
+    if (!finished) {
+      finished = true;
       unlisten?.();
       unlisten = undefined;
-      onEnd(e.payload.error);
+      cb.onEnd(error);
+    }
+  };
+  unlisten = await listen<DictationEvent>('dictation', (e) => {
+    if (e.payload.hypothesis) {
+      cb.onHypothesis(e.payload.hypothesis);
+    }
+    if (e.payload.text) {
+      cb.onText(e.payload.text);
+    }
+    if (e.payload.ended) {
+      finish(e.payload.error);
     }
   });
   try {
     await invoke('start_dictation', { label });
   } catch (err) {
-    stop();
-    onEnd(String(err));
+    finish(String(err));
   }
-  return stop;
+  return () => {
+    void invoke('stop_dictation');
+    window.setTimeout(() => finish(null), 3000); // in case the engine never reports completion
+  };
 }
