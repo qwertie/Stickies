@@ -143,8 +143,10 @@ fn write_note(state: State<AppState>, folder: String, content: String) -> Result
     state.store.write_note(&folder, &content)
 }
 
+/// Async on purpose: on Windows, creating a window from a synchronous command deadlocks the IPC
+/// thread against the main thread (documented Tauri gotcha). Same for `restore_note`.
 #[tauri::command]
-fn create_note(app: AppHandle) -> Result<String, String> {
+async fn create_note(app: AppHandle) -> Result<String, String> {
     create_and_open(&app)
 }
 
@@ -165,8 +167,8 @@ fn list_archived(state: State<AppState>) -> Vec<ArchivedInfo> {
 }
 
 #[tauri::command]
-fn restore_note(app: AppHandle, state: State<AppState>, folder: String) -> Result<String, String> {
-    let restored = state.store.restore_note(&folder)?;
+async fn restore_note(app: AppHandle, folder: String) -> Result<String, String> {
+    let restored = app.state::<AppState>().store.restore_note(&folder)?;
     windows::open_note(&app, &restored)?;
     Ok(restored)
 }
