@@ -158,7 +158,7 @@ pub fn build_app_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
         &[
             &item("new", "New note (double-click)")?,
             &item("show", "Bring all notes to front (click)")?,
-            &item("latest", "Show last-used note (hover)")?,
+            &item("latest", "Show last-used note")?,
             &PredefinedMenuItem::separator(app)?,
             &item("folder", "Open data folder")?,
             &item("options", "Options…")?,
@@ -187,8 +187,8 @@ pub fn handle_app_menu(app: &AppHandle, id: &str) {
     }
 }
 
-/// Tray icon with the same menu and gestures as the corner dot: click raises all notes,
-/// double-click creates one, hover raises the last-used note.
+/// Tray icon with the same menu as the corner dot and its click gestures: click raises all notes,
+/// double-click creates one. No hover action: the pointer crosses tray icons constantly.
 pub fn build_tray(app: &AppHandle) -> tauri::Result<()> {
     let menu = build_app_menu(app)?;
     TrayIconBuilder::new()
@@ -204,7 +204,6 @@ pub fn build_tray(app: &AppHandle) -> tauri::Result<()> {
                 TrayIconEvent::DoubleClick { button: MouseButton::Left, .. } => {
                     crate::create_and_open(app).ok();
                 }
-                TrayIconEvent::Enter { .. } => focus_latest(app),
                 _ => {}
             }
         })
