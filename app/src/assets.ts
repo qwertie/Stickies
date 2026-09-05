@@ -13,7 +13,11 @@ export function isRelativeAttachment(src: string | null | undefined): src is str
 
 /** `attachments/x.png` -> an asset:// URL the webview can load. Other sources pass through. */
 export function toAssetSrc(src: string): string {
-  return isRelativeAttachment(src) ? convertFileSrc(`${noteDir}\\${src.replace(/\//g, '\\')}`) : src;
+  if (!isRelativeAttachment(src)) {
+    return src;
+  }
+  const sep = noteDir.includes('\\') ? '\\' : '/';
+  return convertFileSrc(`${noteDir}${sep}${src.split('/').join(sep)}`);
 }
 
 /** Inverse of toAssetSrc, so HTML copied from one of our notes round-trips. */

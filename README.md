@@ -30,12 +30,15 @@ PowerShell:
 git clone https://github.com/qwertie/Stickies.git
 cd Stickies\app
 npm install
-npm run tauri build
+npm run build:win        # build:mac / build:linux on those systems
 ```
 
-The installer appears at `app\src-tauri\target\release\bundle\nsis\`. Use `npm run tauri dev`
-instead of `build` to run it with live reload while developing. Pushing a git tag such as `v0.2.0`
-makes GitHub Actions build the installer and publish a release automatically.
+The installer appears under `app\src-tauri\target\release\bundle\`. Use `npm run tauri dev` to run
+it with live reload while developing. Pushing a git tag such as `v0.2.0` makes GitHub Actions build
+the installers for every platform and publish a release automatically.
+
+On macOS you also need Xcode's command line tools (`xcode-select --install`). On Debian/Ubuntu you
+need the packages listed in `.github/workflows/build.yml` under "Linux build dependencies".
 
 ## Using it
 
@@ -66,6 +69,32 @@ makes GitHub Actions build the installer and publish a release automatically.
 - If your screen resolution changes or a monitor is unplugged, notes are pulled back on screen.
   Their saved positions are untouched, so they return to where you left them when the original
   screen arrangement comes back.
+
+## Platforms
+
+Windows is the primary platform and the only one exercised by hand so far. macOS and Linux builds
+come out of the same source and CI; they are expected to work but have not been tried on real
+machines yet.
+
+| Feature | Windows | macOS | Linux |
+|---|---|---|---|
+| Installer | NSIS setup.exe, per-user | .dmg (unsigned: right-click > Open the first time, or `xattr -d com.apple.quarantine`) | AppImage (x64, arm64) and .deb; needs WebKitGTK 4.1 and libayatana-appindicator3 |
+| Notes, Markdown files, archive, watcher, sync folder | Yes | Yes | Yes |
+| Default data folder | `%OneDrive%\Stickies` | `~/Library/CloudStorage/OneDrive-*/Stickies` if present, else `~/Stickies` | `~/OneDrive/Stickies` if present, else `~/Stickies` |
+| Start with login | Run registry key | Login item (LaunchAgent) | `~/.config/autostart` desktop entry |
+| Corner hot-spot | 6×6 px at the very top-right | 6×60 px strip at the right edge just below the menu bar (the corner itself is the menu bar) | 6×6 px top-right on X11; on Wayland the compositor decides window placement, so it may land elsewhere |
+| Tray / menu bar icon | Yes | Menu bar extra; no Dock icon | Yes on desktops with an AppIndicator host (GNOME needs the AppIndicator extension) |
+| Note placement, clamping on resolution change | Yes | Yes (work area excludes Dock and menu bar) | X11 yes; Wayland ignores requested positions |
+| Paste files and folders from the file manager | Yes | Yes | Yes |
+| Drag and drop from the file manager | Yes | Yes | Yes |
+| Copy chips: text + HTML + real files at once | Yes | Files only when the selection contains attachments, otherwise text + HTML | Same as macOS |
+| Paste image from context menu | .bmp | .png | .png |
+| Text to speech | Windows voices | macOS voices | Only if speech-dispatcher is installed |
+| Speech to text (dictation) | Windows online recognition (needs the privacy setting) | Not yet | Not available |
+| Always on top / raise all | Yes | Yes | X11 yes; Wayland partially |
+
+Linux users on Wayland who want the Windows-style behaviour can force X11 with
+`GDK_BACKEND=x11 stickies`.
 
 ## Where the notes live
 

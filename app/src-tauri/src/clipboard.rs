@@ -1,7 +1,14 @@
-//! Native clipboard access for the parts the webview cannot do: file lists (CF_HDROP) in both
-//! directions, and bitmap paste from the context menu.
+//! Native clipboard access for the parts the webview cannot do: file lists in both directions,
+//! and image paste from the context menu.
+//!
+//! Windows uses clipboard-win so text, HTML and a file list can all be placed at once (which is
+//! what makes "copy chips like text" work). Other platforms use arboard, which sets one format at
+//! a time, so a copy containing attachments puts only the file list on the clipboard there.
 
 use std::path::PathBuf;
+
+/// Encoded image bytes plus a file extension for saving them.
+pub type ClipImage = (Vec<u8>, &'static str);
 
 #[cfg(windows)]
 mod imp {
@@ -18,9 +25,8 @@ mod imp {
         get_clipboard::<String, _>(formats::Unicode).ok().filter(|s| !s.is_empty())
     }
 
-    /// Returns the clipboard bitmap as a BMP file image, if any.
-    pub fn read_bitmap() -> Option<Vec<u8>> {
-        get_clipboard::<Vec<u8>, _>(formats::Bitmap).ok().filter(|b| !b.is_empty())
+    pub fn read_image() -> Option<ClipImage> {
+        get_clipboard::<Vec<u8>, _>(formats::Bitmap).ok().filter(|b| !b.is_empty()).map(|b| (b, "bmp"))
     }
 
     pub fn write(text: &str, html: Option<&str>, files: &[PathBuf]) -> Result<(), String> {
@@ -41,17 +47,38 @@ mod imp {
 #[cfg(not(windows))]
 mod imp {
     use super::*;
+    use arboard::Clipboard;
+
     pub fn read_files() -> Vec<PathBuf> {
-        Vec::new()
+        Clipboard::new().and_then(|mut c| c.get().file_list()).unwrap_or_default()
     }
+
     pub fn read_text() -> Option<String> {
-        None
+        Clipboard::new().and_then(|mut c| c.get_text()).ok().filter(|s| !s.is_empty())
     }
-    pub fn read_bitmap() -> Option<Vec<u8>> {
-        None
+
+    pub fn read_image() -> Option<ClipImage> {
+        let image = Clipboard::new().and_then(|mut c| c.get_image()).ok()?;
+        let mut out = Vec::new();
+        {
+            let mut encoder = png::Encoder::new(&mut out, image.width as u32, image.height as u32);
+            encoder.set_color(png::ColorType::Rgba);
+            encoder.set_depth(png::BitDepth::Eight);
+            let mut writer = encoder.write_header().ok()?;
+            writer.write_image_data(&image.bytes).ok()?;
+        }
+        Some((out, "png"))
     }
-    pub fn write(_: &str, _: Option<&str>, _: &[PathBuf]) -> Result<(), String> {
-        Ok(())
+
+    pub fn write(text: &str, html: Option<&str>, files: &[PathBuf]) -> Result<(), String> {
+        let mut clip = Clipboard::new().map_err(|e| e.to_string())?;
+        if !files.is_empty() {
+            clip.set().file_list(files).map_err(|e| e.to_string())
+        } else if let Some(html) = html {
+            clip.set().html(html, Some(text)).map_err(|e| e.to_string())
+        } else {
+            clip.set_text(text).map_err(|e| e.to_string())
+        }
     }
 }
 

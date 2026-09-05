@@ -16,6 +16,9 @@ pub const TOP_MARGIN: i32 = 15;
 pub const SLOT_STEP: i32 = 200;
 pub const CORNER_LABEL: &str = "corner";
 const CORNER_SIZE: f64 = 6.0;
+/// On macOS the menu bar owns the screen corner, so the hot-spot is a strip just below it that a
+/// mouse flung to the right edge still hits.
+const CORNER_HEIGHT: f64 = if cfg!(target_os = "macos") { 60.0 } else { CORNER_SIZE };
 
 pub fn label_for(folder: &str) -> String {
     let mut h = DefaultHasher::new();
@@ -90,8 +93,7 @@ pub fn focus_latest(app: &AppHandle) {
 }
 
 pub fn open_corner(app: &AppHandle) -> Result<(), String> {
-    let area = primary_work_area(app);
-    let x = (area.x + area.w as i32) as f64 - CORNER_SIZE;
+    let (x, y) = corner_position(app);
     let window = WebviewWindowBuilder::new(app, CORNER_LABEL, WebviewUrl::App("index.html".into()))
         .title("Stickies")
         .decorations(false)
@@ -99,10 +101,10 @@ pub fn open_corner(app: &AppHandle) -> Result<(), String> {
         .always_on_top(true)
         .skip_taskbar(true)
         .shadow(false)
-        .min_inner_size(CORNER_SIZE, CORNER_SIZE)
-        .max_inner_size(CORNER_SIZE, CORNER_SIZE)
-        .inner_size(CORNER_SIZE, CORNER_SIZE)
-        .position(x, 0.0)
+        .min_inner_size(CORNER_SIZE, CORNER_HEIGHT)
+        .max_inner_size(CORNER_SIZE, CORNER_HEIGHT)
+        .inner_size(CORNER_SIZE, CORNER_HEIGHT)
+        .position(x, y)
         .initialization_script("window.__STICKIES__ = { corner: true };")
         .build()
         .map_err(|e| e.to_string())?;
@@ -119,11 +121,12 @@ fn force_tiny_size(window: &WebviewWindow) {
         SetWindowPos, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSENDCHANGING, SWP_NOZORDER,
     };
     let scale = window.scale_factor().unwrap_or(1.0);
-    let px = (CORNER_SIZE * scale).round() as i32;
+    let w = (CORNER_SIZE * scale).round() as i32;
+    let h = (CORNER_HEIGHT * scale).round() as i32;
     if let Ok(hwnd) = window.hwnd() {
         let hwnd = HWND(hwnd.0 as _);
         unsafe {
-            SetWindowPos(hwnd, None, 0, 0, px, px, SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOSENDCHANGING).ok();
+            SetWindowPos(hwnd, None, 0, 0, w, h, SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOSENDCHANGING).ok();
         }
     }
 }
@@ -234,9 +237,17 @@ pub fn clamp_all(app: &AppHandle) {
         }
     }
     if let Some(corner) = app.get_webview_window(CORNER_LABEL) {
-        let area = primary_work_area(app);
-        corner.set_position(LogicalPosition::new((area.x + area.w as i32) as f64 - CORNER_SIZE, 0.0)).ok();
+        let (x, y) = corner_position(app);
+        corner.set_position(LogicalPosition::new(x, y)).ok();
     }
+}
+
+/// Top-right of the primary work area. On Windows the work area starts at the true screen top;
+/// on macOS it starts below the menu bar, which is exactly where the strip should sit.
+fn corner_position(app: &AppHandle) -> (f64, f64) {
+    let area = primary_work_area(app);
+    let y = if cfg!(target_os = "macos") { area.y as f64 } else { 0.0 };
+    ((area.x + area.w as i32) as f64 - CORNER_SIZE, y)
 }
 
 /// A fingerprint of the monitor arrangement; a change means windows may need re-clamping.

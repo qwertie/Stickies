@@ -96,6 +96,8 @@ pub fn run() {
         ])
         .setup(|app| {
             let handle = app.handle().clone();
+            #[cfg(target_os = "macos")]
+            app.set_activation_policy(tauri::ActivationPolicy::Accessory); // menu bar extra, no Dock icon
             let state = app.state::<AppState>();
             state.store.purge_archive();
             app.asset_protocol_scope().allow_directory(&state.store.data_dir, true)?;
@@ -214,8 +216,8 @@ fn read_clipboard_for_paste(state: State<AppState>, folder: String) -> Result<Pa
     let paths = clipboard::read_files();
     let mut files = state.store.import_paths(&folder, &paths)?;
     if files.is_empty() {
-        if let Some(bmp) = clipboard::read_bitmap() {
-            files.push(state.store.save_attachment(&folder, "pasted-image.bmp", &bmp)?);
+        if let Some((bytes, ext)) = clipboard::read_image() {
+            files.push(state.store.save_attachment(&folder, &format!("pasted-image.{ext}"), &bytes)?);
         }
     }
     let text = if files.is_empty() { clipboard::read_text() } else { None };

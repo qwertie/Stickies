@@ -273,15 +273,28 @@ pub fn save_config(config: &Config) -> Result<(), String> {
     fs::write(config_dir().join("config.json"), json).map_err(|e| e.to_string())
 }
 
-/// `%OneDrive%\Stickies` when OneDrive is set up, so notes sync with no configuration; else
-/// `%USERPROFILE%\Stickies`.
+/// The user's OneDrive folder if one exists (so notes sync with no configuration), else the home
+/// folder; `Stickies` inside it.
 pub fn default_data_dir() -> PathBuf {
-    std::env::var_os("OneDrive")
-        .map(PathBuf::from)
-        .filter(|p| p.is_dir())
+    find_onedrive()
         .or_else(dirs::home_dir)
         .unwrap_or_else(|| PathBuf::from("."))
         .join("Stickies")
+}
+
+fn find_onedrive() -> Option<PathBuf> {
+    if let Some(dir) = std::env::var_os("OneDrive").map(PathBuf::from).filter(|p| p.is_dir()) {
+        return Some(dir);
+    }
+    // macOS: ~/Library/CloudStorage/OneDrive-<Tenant>; Linux clients (e.g. onedriver) use ~/OneDrive.
+    let home = dirs::home_dir()?;
+    let cloud = home.join("Library/CloudStorage");
+    let mac = fs::read_dir(&cloud).ok().and_then(|rd| {
+        rd.flatten()
+            .map(|e| e.path())
+            .find(|p| p.is_dir() && p.file_name().map_or(false, |n| n.to_string_lossy().starts_with("OneDrive")))
+    });
+    mac.or_else(|| Some(home.join("OneDrive")).filter(|p| p.is_dir()))
 }
 
 pub fn is_image_name(name: &str) -> bool {
