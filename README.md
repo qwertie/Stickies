@@ -48,10 +48,14 @@ makes GitHub Actions build the installer and publish a release automatically.
   Double-click a chip or image to open it. Select chips along with text and copy: the files are
   put on the clipboard too, so you can paste them into Explorer or an email.
 - **The tiny yellow dot** in the top-right corner of the screen: click it to bring all notes on
-  top of other windows; hovering raises the newest note.
+  top of other windows, double-click it for a new note; hovering raises the newest note.
+- **Quit** is in the right-click menu and the tray icon's menu. Stickies starts again with Windows
+  (it registers itself under the current user's Run key); the tray menu's Quit does not undo that.
 - **Closing a note** archives it. Right-click any note and open **Restore Archived** to get it back
   within 30 days; after that it is deleted.
 - If your screen resolution changes or a monitor is unplugged, notes are pulled back on screen.
+  Their saved positions are untouched, so they return to where you left them when the original
+  screen arrangement comes back.
 
 ## Where the notes live
 

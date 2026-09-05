@@ -15,6 +15,11 @@ Unassigned items in the current iteration, same format.
 ## PRs waiting for my review
 `- **!id** Title — repo, by author, opened N days ago`.
 
+## Failed builds
+Pipeline runs that failed and concern David; `reason` says why (branch names his work item, branch
+is checked out on this machine, or he requested the build). `- **Pipeline** on branch — reason,
+finished weekday HH:mm`.
+
 ## Email needing attention
 From the unread messages, keep only those that look like they were written by a human and are not
 promotional or automated, or that clearly need David's attention (a question addressed to him, a

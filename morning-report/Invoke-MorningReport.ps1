@@ -80,7 +80,7 @@ function Get-Worktrees {
 }
 
 # ---------------------------------------------------------------- Azure DevOps
-function Get-AdoData {
+function Get-AdoData([array]$Worktrees) {
     $ado = $config.ado
     $pat = [Environment]::GetEnvironmentVariable($ado.patEnvVar)
     if (-not $pat) {
@@ -134,7 +134,39 @@ function Get-AdoData {
         }
     })
 
-    return [pscustomobject]@{ me = $me.providerDisplayName; myWorkItems = $mine; upForGrabs = $upForGrabs; prsAwaitingMyReview = $awaiting }
+    # Failed pipeline runs that have some connection to me: the branch names one of my work items,
+    # a worktree on this machine has the branch checked out, or I requested the build.
+    $failedBuilds = @()
+    if ([int]$ado.failedBuildDays -gt 0) {
+        $minTime = (Get-Date).AddDays(-[int]$ado.failedBuildDays).ToUniversalTime().ToString('o')
+        $builds = (Invoke-RestMethod "$org/$project/_apis/build/builds?statusFilter=completed&resultFilter=failed&minTime=$minTime&`$top=200&$api" -Headers $headers).value
+        $myIds = @($mine | ForEach-Object { [string]$_.id })
+        $seen = @{}
+        foreach ($b in $builds) {
+            $branch = $b.sourceBranch -replace '^refs/heads/', ''
+            $key = "$($b.definition.id)|$branch"
+            if ($seen.ContainsKey($key)) { continue }
+            $reasons = @()
+            $ticketHits = @([regex]::Matches($branch, '\d{3,6}') | ForEach-Object { $_.Value } | Where-Object { $myIds -contains $_ })
+            if ($ticketHits) { $reasons += "branch names my work item #$($ticketHits -join ', #')" }
+            $wt = $Worktrees | Where-Object { $_.branch -eq $branch } | Select-Object -First 1
+            if ($wt) { $reasons += "checked out in worktree $($wt.path)" }
+            if ($b.requestedFor.id -eq $me.id) { $reasons += 'I requested the build' }
+            if ($reasons) {
+                $seen[$key] = $true
+                $failedBuilds += [pscustomobject]@{
+                    pipeline = $b.definition.name; buildNumber = $b.buildNumber; branch = $branch
+                    finished = $b.finishTime; requestedBy = $b.requestedFor.displayName
+                    reason = ($reasons -join '; '); url = $b._links.web.href
+                }
+            }
+        }
+    }
+
+    return [pscustomobject]@{
+        me = $me.providerDisplayName; myWorkItems = $mine; upForGrabs = $upForGrabs
+        prsAwaitingMyReview = $awaiting; failedBuilds = $failedBuilds
+    }
 }
 
 # ---------------------------------------------------------------- Outlook via Graph
@@ -208,6 +240,8 @@ function Format-Fallback($raw) {
         foreach ($w in $raw.ado.upForGrabs) { [void]$sb.AppendLine("- **#$($w.id)** $($w.title) ($($w.state), $($w.type))") }
         [void]$sb.AppendLine("`n## PRs waiting for my review")
         foreach ($p in $raw.ado.prsAwaitingMyReview) { [void]$sb.AppendLine("- **!$($p.id)** $($p.title) - $($p.repo), by $($p.author)") }
+        [void]$sb.AppendLine("`n## Failed builds")
+        foreach ($b in $raw.ado.failedBuilds) { [void]$sb.AppendLine("- **$($b.pipeline)** on $($b.branch) ($($b.reason))") }
     }
     if ($raw.email) {
         [void]$sb.AppendLine("`n## Unread email (pre-filtered only)")
@@ -242,7 +276,7 @@ $raw = [ordered]@{
     ado = $null
     email = $null
 }
-try { $raw.ado = Get-AdoData } catch { Add-Failure 'Azure DevOps' $_.Exception.Message }
+try { $raw.ado = Get-AdoData -Worktrees $raw.worktrees } catch { Add-Failure 'Azure DevOps' $_.Exception.Message }
 try { $raw.email = Get-EmailData } catch { Add-Failure 'Email' $_.Exception.Message }
 
 $rawJson = $raw | ConvertTo-Json -Depth 8

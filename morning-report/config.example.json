@@ -8,6 +8,7 @@
     "project": "barreleye",
     "team": null,
     "patEnvVar": "ADO_PAT",
+    "failedBuildDays": 3,
     "doneStates": ["Done", "Removed", "Closed", "Ready for Testing"],
     "workItemTypes": ["Product Backlog Item", "Bug", "Task"]
   },

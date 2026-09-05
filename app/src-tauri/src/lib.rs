@@ -8,10 +8,10 @@ mod windows;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Mutex;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use serde::Serialize;
-use tauri::{AppHandle, Manager, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 use tauri_plugin_autostart::ManagerExt;
 
 use layout::Rect;
@@ -24,6 +24,9 @@ pub struct AppState {
     /// Note folder -> last content this process wrote or loaded, so the watcher can ignore our
     /// own writes.
     pub last_written: Mutex<HashMap<String, String>>,
+    /// Until this instant, window move/resize events are the app's own doing (clamping after a
+    /// monitor change) and must not be saved as the user's chosen layout.
+    pub programmatic_moves_until: Mutex<Instant>,
 }
 
 #[derive(Serialize)]
@@ -52,6 +55,7 @@ pub fn run() {
             store: Store::open(),
             labels: Mutex::new(HashMap::new()),
             last_written: Mutex::new(HashMap::new()),
+            programmatic_moves_until: Mutex::new(Instant::now()),
         })
         .invoke_handler(tauri::generate_handler![
             load_note,
@@ -72,6 +76,7 @@ pub fn run() {
             change_data_dir,
             start_dictation,
             stop_dictation,
+            quit_app,
         ])
         .setup(|app| {
             let handle = app.handle().clone();
@@ -97,6 +102,16 @@ pub fn run() {
                 api.prevent_exit();
             }
         });
+}
+
+/// Asks every note window to flush its pending save, then exits.
+pub fn quit(app: &AppHandle) {
+    app.emit("save-now", ()).ok();
+    let app = app.clone();
+    std::thread::spawn(move || {
+        std::thread::sleep(Duration::from_millis(500));
+        app.exit(0);
+    });
 }
 
 pub fn create_and_open(app: &AppHandle) -> Result<String, String> {
@@ -189,11 +204,15 @@ fn resolve_attachment(state: State<AppState>, folder: String, rel: String) -> Pa
     state.store.resolve(&folder, &rel)
 }
 
+/// Records where the user put a window. Moves the app made itself (clamping) are ignored so the
+/// saved rect stays the user's intended "home" position.
 #[tauri::command]
-fn save_layout(folder: String, x: i32, y: i32, w: u32, h: u32) {
-    layout::update(|l| {
-        l.windows.insert(folder, Rect { x, y, w, h });
-    });
+fn save_layout(state: State<AppState>, folder: String, x: i32, y: i32, w: u32, h: u32) {
+    if Instant::now() >= *state.programmatic_moves_until.lock().unwrap() {
+        layout::update(|l| {
+            l.windows.insert(folder, Rect { x, y, w, h });
+        });
+    }
 }
 
 #[tauri::command]
@@ -230,6 +249,11 @@ fn change_data_dir(app: AppHandle, state: State<AppState>, path: PathBuf) -> Res
         app.restart();
     }
     Ok(())
+}
+
+#[tauri::command]
+fn quit_app(app: AppHandle) {
+    quit(&app);
 }
 
 #[tauri::command]

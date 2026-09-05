@@ -9,6 +9,9 @@ The report contains:
 - Azure DevOps work items assigned to you that are not done or ready for testing
 - Unassigned work items in the current sprint ("up for grabs")
 - Pull requests where you are a reviewer and have not voted yet
+- Pipeline runs that failed in the last few days (`ado.failedBuildDays`) and concern you: the branch
+  name contains the number of one of your work items, a worktree on this machine has that branch
+  checked out, or you requested the build
 - Unread Outlook mail from the last week, triaged by Claude so only mail from real people, or mail
   that clearly needs you, is listed
 - Every git worktree of your configured repositories with its branch; T3 Code worktrees are marked
@@ -42,8 +45,8 @@ you choose and expires on a date you choose. It never leaves your PC.
    **Personal access tokens**.
 3. Click **+ New Token**. Give it a name such as `Stickies morning report`, choose your
    organization, and set an expiration (up to one year; you will repeat this step when it expires).
-4. Under **Scopes**, choose **Custom defined**, then tick **Work Items: Read** and **Code: Read**.
-   Nothing else. Click **Create**.
+4. Under **Scopes**, choose **Custom defined**, then tick **Work Items: Read**, **Code: Read** and
+   **Build: Read**. Nothing else. Click **Create**.
 5. Copy the token now; Azure DevOps will not show it again.
 6. Store it in a user environment variable so the script can read it. In PowerShell:
 

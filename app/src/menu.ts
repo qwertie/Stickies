@@ -90,6 +90,7 @@ export async function showContextMenu(noteDir: string, a: MenuActions) {
       item('Change data folder…', () => void changeDataDir()),
       separator(),
       item('Close note (archive)', a.close),
+      item('Quit Stickies', () => void invoke('quit_app')),
     ]),
   });
   await menu.popup();

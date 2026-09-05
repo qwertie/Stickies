@@ -140,6 +140,11 @@ export function NoteApp({ folder, label }: { folder: string; label: string }) {
   }, [folder]);
 
   useEffect(() => {
+    const unlisten = listen('save-now', save);
+    return () => void unlisten.then((f) => f());
+  }, [save]);
+
+  useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.ctrlKey && e.key.toLowerCase() === 'n') {
         e.preventDefault();

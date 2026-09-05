@@ -2,6 +2,7 @@
 
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
+use std::time::{Duration, Instant};
 
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::{TrayIconBuilder, TrayIconEvent};
@@ -30,8 +31,9 @@ pub fn open_note(app: &AppHandle, folder: &str) -> Result<WebviewWindow, String>
         return Ok(existing);
     }
     app.state::<AppState>().labels.lock().unwrap().insert(label.clone(), folder.to_string());
-    let rect = layout::load().windows.get(folder).copied().unwrap_or_else(|| next_rect(app));
-    let rect = clamp_rect(rect, &work_area_for_point(app, rect.x, rect.y));
+    let stored = layout::load().windows.get(folder).copied();
+    let home = stored.unwrap_or_else(|| next_rect(app));
+    let rect = clamp_to_screen(app, home);
     let init = format!(
         "window.__STICKIES__ = {{ folder: {}, label: {} }};",
         serde_json::to_string(folder).unwrap(),
@@ -46,9 +48,11 @@ pub fn open_note(app: &AppHandle, folder: &str) -> Result<WebviewWindow, String>
         .initialization_script(&init)
         .build()
         .map_err(|e| e.to_string())?;
-    layout::update(|l| {
-        l.windows.insert(folder.to_string(), rect);
-    });
+    if stored.is_none() {
+        layout::update(|l| {
+            l.windows.insert(folder.to_string(), home);
+        });
+    }
     Ok(window)
 }
 
@@ -144,7 +148,7 @@ pub fn build_tray(app: &AppHandle) -> tauri::Result<()> {
                 let dir = app.state::<AppState>().store.data_dir.clone();
                 tauri_plugin_opener::open_path(dir, None::<&str>).ok();
             }
-            "quit" => app.exit(0),
+            "quit" => crate::quit(app),
             _ => {}
         })
         .on_tray_icon_event(|tray, event| {
@@ -156,19 +160,26 @@ pub fn build_tray(app: &AppHandle) -> tauri::Result<()> {
     Ok(())
 }
 
-/// Moves every note window back inside its monitor's work area (after a resolution drop, or an
-/// unplugged monitor).
+/// Re-places every note window from its saved "home" rect, clamped to the monitors that exist
+/// now. After a resolution drop the notes are pulled on screen; when the original arrangement
+/// returns they go back where the user left them, because the saved rect is never overwritten by
+/// these moves (see `save_layout`).
 pub fn clamp_all(app: &AppHandle) {
+    let state = app.state::<AppState>();
+    *state.programmatic_moves_until.lock().unwrap() = Instant::now() + Duration::from_millis(1500);
+    let layout = layout::load();
+    let labels = state.labels.lock().unwrap().clone();
     for w in note_windows(app) {
         let scale = w.scale_factor().unwrap_or(1.0);
         let (Ok(pos), Ok(size)) = (w.outer_position(), w.outer_size()) else { continue };
         let pos = pos.to_logical::<i32>(scale);
         let size = size.to_logical::<u32>(scale);
-        let rect = Rect { x: pos.x, y: pos.y, w: size.width, h: size.height };
-        let clamped = clamp_rect(rect, &work_area_for_point(app, rect.x + rect.w as i32 / 2, rect.y + 20));
-        if clamped.x != rect.x || clamped.y != rect.y || clamped.w != rect.w || clamped.h != rect.h {
-            w.set_size(LogicalSize::new(clamped.w, clamped.h)).ok();
-            w.set_position(LogicalPosition::new(clamped.x, clamped.y)).ok();
+        let current = Rect { x: pos.x, y: pos.y, w: size.width, h: size.height };
+        let home = labels.get(w.label()).and_then(|f| layout.windows.get(f)).copied().unwrap_or(current);
+        let target = clamp_to_screen(app, home);
+        if target.x != current.x || target.y != current.y || target.w != current.w || target.h != current.h {
+            w.set_size(LogicalSize::new(target.w, target.h)).ok();
+            w.set_position(LogicalPosition::new(target.x, target.y)).ok();
         }
     }
     if let Some(corner) = app.get_webview_window(CORNER_LABEL) {
@@ -202,6 +213,12 @@ fn next_rect(app: &AppHandle) -> Rect {
         rect.y = area.y + y;
     });
     rect
+}
+
+/// Clamps into the work area of the monitor containing the rect's top-left, or the primary
+/// monitor when that monitor is gone.
+fn clamp_to_screen(app: &AppHandle, rect: Rect) -> Rect {
+    clamp_rect(rect, &work_area_for_point(app, rect.x + 20, rect.y + 10))
 }
 
 fn clamp_rect(mut rect: Rect, area: &Rect) -> Rect {
