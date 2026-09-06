@@ -118,13 +118,25 @@ The scheduled task has "Wake the computer to run this task" and "Run task as soo
 after a scheduled start is missed" enabled. So it fires at 04:00 if the PC is asleep, and at your
 next logon if the PC was off. It runs as your user only while you are logged on (the lock screen
 counts), because that is the only way it can reach your Graph sign-in, your Claude login and the
-`ADO_PAT` variable. If a data source fails (no network yet, expired token), the script exits with an
-error and the task retries up to three times, ten minutes apart.
+`ADO_PAT` variable.
+
+The first thing a run does is replace today's report note with a grey placeholder saying
+"Generating, started 04:00". If you see that placeholder in the morning, the generator started but
+did not finish; if you see no note at all, it never started. Either way the place to look is:
+
+- `logs\<date>.log` next to the script, for anything the script itself did
+- `%LOCALAPPDATA%\Stickies\morning-report-launch.log`, written by the small launcher the task
+  actually runs. It waits up to five minutes for the script's drive to appear (a USB or junctioned
+  drive may not be back yet seconds after wake) and records when it gave up.
+
+Transient failures (no network yet after wake) are retried inside the script, three attempts three
+minutes apart, with the placeholder updated between attempts. Task Scheduler's own retry setting
+only covers failure to launch, so it is not relied on.
 
 ## Files
 
 - `Invoke-MorningReport.ps1` — gathers data, calls `claude -p`, writes the note
 - `prompt.md` — the instructions Claude receives; edit this to change the report's shape
-- `Register-MorningReportTask.ps1` — creates or updates the scheduled task
+- `Register-MorningReportTask.ps1` — creates or updates the scheduled task and its launcher
 - `config.example.json` — template for `config.json`
 - `logs/` — one log file per day (git-ignored)

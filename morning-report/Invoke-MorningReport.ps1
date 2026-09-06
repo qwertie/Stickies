@@ -85,11 +85,13 @@ function Get-Worktrees {
 # Invoke-RestMethod's error message for a 4xx drops the response body, which is where Azure DevOps
 # explains what it objected to. This wrapper keeps it, along with the URL.
 function Invoke-Ado([string]$Uri, [hashtable]$Headers, [string]$Method = 'Get', $Body = $null) {
+    # Invoke-RestMethod's default is no timeout at all. dev.azure.com has several addresses and one
+    # of them has been seen swallowing SYNs for minutes; a bounded wait lets the retry loop take over.
     try {
         if ($Body) {
-            Invoke-RestMethod $Uri -Method $Method -Headers $Headers -ContentType 'application/json' -Body $Body
+            Invoke-RestMethod $Uri -Method $Method -Headers $Headers -ContentType 'application/json' -Body $Body -TimeoutSec 30
         } else {
-            Invoke-RestMethod $Uri -Method $Method -Headers $Headers
+            Invoke-RestMethod $Uri -Method $Method -Headers $Headers -TimeoutSec 30
         }
     } catch [System.Net.WebException] {
         $detail = ''
@@ -349,19 +351,44 @@ function Write-Note([string]$DataDir, [string]$Body) {
     return $folder
 }
 
+# The first thing the run does is put a placeholder note on screen, so "no report" is visibly
+# different from "generator never started". Write-Note replaces it when the real report is ready.
+function Write-Placeholder([string]$DataDir, [string]$Status) {
+    $today = Get-Date
+    $folder = Join-Path $DataDir ("notes\{0:yyyy-MM-dd}-morning-report" -f $today)
+    New-Item -ItemType Directory -Force $folder | Out-Null
+    $status = if ($Status) { " $Status" } else { '' }
+    $content = "---`ncolor: `"#E8E8E8`"`ncreated: {0}`n---`n`n# Morning report, {1:dddd d MMMM}`n`n_Generating, started {1:HH:mm}.{2}_`n`nIf this text is still here after a few minutes the generator failed; see ``{3}``.`n" -f $today.ToString('yyyy-MM-ddTHH:mm:sszzz'), $today, $status, $logFile
+    $tmp = Join-Path $folder 'note.md.tmp'
+    [IO.File]::WriteAllText($tmp, $content, [Text.UTF8Encoding]::new($false))
+    Move-Item -Force $tmp (Join-Path $folder 'note.md')
+}
+
 # ---------------------------------------------------------------- main
 Write-Log 'Morning report starting'
 $dataDir = Get-DataDir
 Write-Log "Data dir: $dataDir"
+Write-Placeholder $dataDir ''
 
-$raw = [ordered]@{
-    generatedAt = (Get-Date).ToString('o')
-    worktrees = @(Get-Worktrees)
-    ado = $null
-    email = $null
+# Task Scheduler's "restart on failure" only covers failure to launch, not a non-zero exit, so
+# transient problems (no network yet after wake) are retried here instead.
+$maxAttempts = 3
+for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
+    $script:Failures = @()
+    $raw = [ordered]@{
+        generatedAt = (Get-Date).ToString('o')
+        worktrees = @(Get-Worktrees)
+        ado = $null
+        email = $null
+    }
+    try { $raw.ado = Get-AdoData -Worktrees $raw.worktrees } catch { Add-Failure 'Azure DevOps' $_.Exception.Message }
+    try { $raw.email = Get-EmailData } catch { Add-Failure 'Email' $_.Exception.Message }
+    $transient = @($script:Failures | Where-Object { $_ -match 'remote name could not be resolved|Unable to connect|timed out|\(50[0-9]\)|network' })
+    if (-not $transient -or $attempt -eq $maxAttempts) { break }
+    Write-Log "Attempt $attempt hit a transient failure; retrying in 3 minutes: $($transient -join '; ')"
+    Write-Placeholder $dataDir "Attempt $attempt failed ($($transient -join '; ')); retrying at $((Get-Date).AddMinutes(3).ToString('HH:mm'))."
+    Start-Sleep -Seconds 180
 }
-try { $raw.ado = Get-AdoData -Worktrees $raw.worktrees } catch { Add-Failure 'Azure DevOps' $_.Exception.Message }
-try { $raw.email = Get-EmailData } catch { Add-Failure 'Email' $_.Exception.Message }
 
 # -Compress: Windows PowerShell's pretty printer pads nested JSON with absurd whitespace, and the
 # compact form costs Claude fewer tokens. Open last.raw.json in a formatter to read it.
