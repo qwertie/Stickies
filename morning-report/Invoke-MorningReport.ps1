@@ -82,9 +82,32 @@ function Get-Worktrees {
 }
 
 # ---------------------------------------------------------------- Azure DevOps
+# Invoke-RestMethod's error message for a 4xx drops the response body, which is where Azure DevOps
+# explains what it objected to. This wrapper keeps it, along with the URL.
+function Invoke-Ado([string]$Uri, [hashtable]$Headers, [string]$Method = 'Get', $Body = $null) {
+    try {
+        if ($Body) {
+            Invoke-RestMethod $Uri -Method $Method -Headers $Headers -ContentType 'application/json' -Body $Body
+        } else {
+            Invoke-RestMethod $Uri -Method $Method -Headers $Headers
+        }
+    } catch [System.Net.WebException] {
+        $detail = ''
+        if ($_.Exception.Response) {
+            $reader = New-Object IO.StreamReader($_.Exception.Response.GetResponseStream())
+            $detail = $reader.ReadToEnd()
+            try { $detail = ($detail | ConvertFrom-Json).message } catch {}
+        }
+        throw "$($_.Exception.Message) for $Uri`: $detail"
+    }
+}
+
 function Get-AdoData([array]$Worktrees) {
     $ado = $config.ado
+    # A variable set in another window (or by SetEnvironmentVariable 'User') is not in this
+    # process's environment yet, so fall back to the registry copy.
     $pat = [Environment]::GetEnvironmentVariable($ado.patEnvVar)
+    if (-not $pat) { $pat = [Environment]::GetEnvironmentVariable($ado.patEnvVar, 'User') }
     if (-not $pat) {
         Add-Failure 'Azure DevOps' "environment variable $($ado.patEnvVar) is not set"
         return $null
@@ -94,10 +117,11 @@ function Get-AdoData([array]$Worktrees) {
     $project = [uri]::EscapeDataString($ado.project)
     $api = 'api-version=7.1'
 
-    $me = (Invoke-RestMethod "$org/_apis/connectionData?$api" -Headers $headers).authenticatedUser
+    # connectionData is an old endpoint that rejects api-version=7.1 with a bare 400.
+    $me = (Invoke-Ado "$org/_apis/connectionData?api-version=7.1-preview.1" $headers).authenticatedUser
     $team = $ado.team
     if (-not $team) {
-        $team = (Invoke-RestMethod "$org/_apis/projects/$project`?$api" -Headers $headers).defaultTeam.name
+        $team = (Invoke-Ado "$org/_apis/projects/$project`?$api" $headers).defaultTeam.name
     }
     $teamPath = "$org/$project/$([uri]::EscapeDataString($team))"
 
@@ -107,10 +131,10 @@ function Get-AdoData([array]$Worktrees) {
 
     function Invoke-Wiql([string]$Where) {
         $body = @{ query = "SELECT [System.Id] FROM WorkItems WHERE $Where ORDER BY [Microsoft.VSTS.Common.Priority] ASC, [System.ChangedDate] DESC" } | ConvertTo-Json
-        $ids = (Invoke-RestMethod "$teamPath/_apis/wit/wiql?$api&`$top=100" -Method Post -Headers $headers -ContentType 'application/json' -Body $body).workItems.id
+        $ids = (Invoke-Ado "$teamPath/_apis/wit/wiql?$api&`$top=100" $headers Post $body).workItems.id
         if (-not $ids) { return @() }
         $fields = 'System.Id,System.Title,System.State,System.WorkItemType,System.IterationPath,Microsoft.VSTS.Common.Priority,System.ChangedDate,System.AssignedTo'
-        $items = (Invoke-RestMethod "$org/$project/_apis/wit/workitems?ids=$($ids -join ',')&fields=$fields&$api" -Headers $headers).value
+        $items = (Invoke-Ado "$org/$project/_apis/wit/workitems?ids=$($ids -join ',')&fields=$fields&$api" $headers).value
         return @($items | ForEach-Object {
             [pscustomobject]@{
                 id = $_.id; title = $_.fields.'System.Title'; state = $_.fields.'System.State'
@@ -124,7 +148,7 @@ function Get-AdoData([array]$Worktrees) {
     $mine = Invoke-Wiql "$baseWhere AND [System.AssignedTo] = @Me"
     $upForGrabs = Invoke-Wiql "$baseWhere AND [System.IterationPath] = @CurrentIteration AND [System.AssignedTo] = ''"
 
-    $prs = (Invoke-RestMethod "$org/$project/_apis/git/pullrequests?searchCriteria.status=active&searchCriteria.reviewerId=$($me.id)&$api" -Headers $headers).value
+    $prs = (Invoke-Ado "$org/$project/_apis/git/pullrequests?searchCriteria.status=active&searchCriteria.reviewerId=$($me.id)&$api" $headers).value
     $awaiting = @($prs | Where-Object {
         $myVote = ($_.reviewers | Where-Object { $_.id -eq $me.id } | Select-Object -First 1).vote
         $myVote -eq 0 -and $_.createdBy.id -ne $me.id
@@ -142,7 +166,7 @@ function Get-AdoData([array]$Worktrees) {
     $failedBuilds = @()
     if ([int]$ado.failedBuildDays -gt 0) {
         $minTime = (Get-Date).AddDays(-[int]$ado.failedBuildDays).ToUniversalTime().ToString('o')
-        $builds = (Invoke-RestMethod "$org/$project/_apis/build/builds?statusFilter=completed&minTime=$minTime&queryOrder=finishTimeDescending&`$top=500&$api" -Headers $headers).value
+        $builds = (Invoke-Ado "$org/$project/_apis/build/builds?statusFilter=completed&minTime=$minTime&queryOrder=finishTimeDescending&`$top=500&$api" $headers).value
         $myIds = @($mine | ForEach-Object { [string]$_.id })
         $seen = @{}
         foreach ($b in $builds) {
@@ -339,7 +363,9 @@ $raw = [ordered]@{
 try { $raw.ado = Get-AdoData -Worktrees $raw.worktrees } catch { Add-Failure 'Azure DevOps' $_.Exception.Message }
 try { $raw.email = Get-EmailData } catch { Add-Failure 'Email' $_.Exception.Message }
 
-$rawJson = $raw | ConvertTo-Json -Depth 8
+# -Compress: Windows PowerShell's pretty printer pads nested JSON with absurd whitespace, and the
+# compact form costs Claude fewer tokens. Open last.raw.json in a formatter to read it.
+$rawJson = $raw | ConvertTo-Json -Depth 8 -Compress
 if ($KeepRaw) { $rawJson | Set-Content "$PSScriptRoot\last.raw.json" -Encoding utf8 }
 
 $body = if ($NoClaude) { $null } else { Invoke-Claude $rawJson }
