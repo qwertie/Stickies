@@ -22,6 +22,8 @@ pub struct Config {
     pub archive_days: u32,
     /// "left" or "right": which edge of the primary screen new notes appear on.
     pub new_note_side: String,
+    /// Where the hot-spot dot sits: "top-right" (default), "top-left", "bottom-left", "bottom-right".
+    pub dot_corner: String,
 }
 
 impl Default for Config {
@@ -33,6 +35,7 @@ impl Default for Config {
             default_font_size: 14,
             archive_days: 30,
             new_note_side: "right".to_string(),
+            dot_corner: "top-right".to_string(),
         }
     }
 }

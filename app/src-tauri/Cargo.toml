@@ -4,6 +4,7 @@ version = "0.1.0"
 description = "Sticky notes with a plain-folder data model"
 authors = ["David Piepgrass"]
 edition = "2021"
+license = "Unlicense"
 
 [lib]
 name = "stickies_lib"

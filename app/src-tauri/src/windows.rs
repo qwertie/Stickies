@@ -143,7 +143,7 @@ pub fn open_options(app: &AppHandle) -> Result<(), String> {
     }
     WebviewWindowBuilder::new(app, OPTIONS_LABEL, WebviewUrl::App("index.html".into()))
         .title("Stickies Options")
-        .inner_size(460.0, 470.0)
+        .inner_size(460.0, 530.0)
         .resizable(false)
         .center()
         .initialization_script("window.__STICKIES__ = { options: true };")
@@ -242,12 +242,16 @@ pub fn clamp_all(app: &AppHandle) {
     }
 }
 
-/// Top-right of the primary work area. On Windows the work area starts at the true screen top;
-/// on macOS it starts below the menu bar, which is exactly where the strip should sit.
+/// The configured corner of the primary work area. On Windows the work area starts at the true
+/// screen top; on macOS it starts below the menu bar, which is exactly where the strip should sit.
 fn corner_position(app: &AppHandle) -> (f64, f64) {
     let area = primary_work_area(app);
-    let y = if cfg!(target_os = "macos") { area.y as f64 } else { 0.0 };
-    ((area.x + area.w as i32) as f64 - CORNER_SIZE, y)
+    let corner = app.state::<AppState>().store.config().dot_corner;
+    let (left, bottom) = (corner.ends_with("left"), corner.starts_with("bottom"));
+    let x = if left { area.x as f64 } else { (area.x + area.w as i32) as f64 - CORNER_SIZE };
+    let top = if cfg!(target_os = "macos") { area.y as f64 } else { 0.0 };
+    let y = if bottom { (area.y + area.h as i32) as f64 - CORNER_HEIGHT } else { top };
+    (x, y)
 }
 
 /// A fingerprint of the monitor arrangement; a change means windows may need re-clamping.

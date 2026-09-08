@@ -13,7 +13,11 @@ export interface Settings {
   defaultFontSize: number;
   archiveDays: number;
   newNoteSide: 'left' | 'right';
+  dotCorner: DotCorner;
 }
+
+type DotCorner = 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right';
+const DOT_CORNERS: DotCorner[] = ['top-left', 'top-right', 'bottom-left', 'bottom-right'];
 
 export function OptionsApp() {
   const [settings, setSettings] = useState<Settings | null>(null);
@@ -80,6 +84,17 @@ export function OptionsApp() {
             <label key={side} className="radio">
               <input type="radio" name="side" checked={settings.newNoteSide === side} onChange={() => update({ newNoteSide: side })} />
               {side} side of the screen
+            </label>
+          ))}
+        </span>
+      </label>
+      <label>
+        Corner dot
+        <span className="inline wrap">
+          {DOT_CORNERS.map((corner) => (
+            <label key={corner} className="radio">
+              <input type="radio" name="corner" checked={settings.dotCorner === corner} onChange={() => update({ dotCorner: corner })} />
+              {corner.replace('-', ' ')}
             </label>
           ))}
         </span>

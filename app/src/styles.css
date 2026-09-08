@@ -246,3 +246,22 @@ body {
   gap: 4px;
   margin-right: 10px;
 }
+
+.options .wrap {
+  flex-wrap: wrap;
+}
+
+.titlebar-tools {
+  display: flex;
+  align-items: center;
+}
+
+.titlebar-tools .titlebar-btn {
+  width: 20px;
+  font-size: 12px;
+}
+
+.titlebar-tools .titlebar-btn.active {
+  background: rgba(0, 0, 0, 0.18);
+  color: #000;
+}

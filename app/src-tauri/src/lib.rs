@@ -269,6 +269,7 @@ fn save_settings(app: AppHandle, state: State<AppState>, mut settings: Config) -
     if moving {
         app.restart();
     }
+    windows::clamp_all(&app); // also moves the dot to its (possibly new) corner
     Ok(())
 }
 

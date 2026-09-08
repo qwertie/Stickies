@@ -3,7 +3,7 @@ import { listen } from '@tauri-apps/api/event';
 import { getCurrentWebview } from '@tauri-apps/api/webview';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import type { Editor } from '@tiptap/core';
-import { EditorContent, useEditor } from '@tiptap/react';
+import { EditorContent, useEditor, useEditorState } from '@tiptap/react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { setNoteDir } from './assets';
@@ -215,12 +215,57 @@ export function NoteApp({ folder }: { folder: string }) {
     <div className="note" style={style} onContextMenu={onContextMenu}>
       <div className="titlebar" data-tauri-drag-region style={{ background: darken(color) }}>
         <button className="titlebar-btn" title="New note (Ctrl+N)" onClick={() => void invoke('create_note')}>+</button>
+        <FormatButtons editor={editor} />
         <span className="titlebar-title" data-tauri-drag-region />
 
         <button className="titlebar-btn" title="Close (archive for 30 days)" onClick={closeNote}>×</button>
       </div>
       <EditorContent editor={editor} className="editor-host" />
     </div>
+  );
+}
+
+const FORMATS = [
+  { name: 'bold', label: 'B', title: 'Bold (Ctrl+B)', style: { fontWeight: 700 } },
+  { name: 'italic', label: 'I', title: 'Italic (Ctrl+I)', style: { fontStyle: 'italic' } },
+  { name: 'strike', label: 'S', title: 'Strikethrough (Ctrl+Shift+S)', style: { textDecoration: 'line-through' } },
+  { name: 'bulletList', label: '•', title: 'Bulleted list (Ctrl+Shift+8)', style: {} },
+  { name: 'orderedList', label: '1.', title: 'Numbered list (Ctrl+Shift+7)', style: {} },
+  { name: 'blockquote', label: '❝', title: 'Quotation (Ctrl+Shift+B)', style: {} },
+] as const;
+
+type FormatName = (typeof FORMATS)[number]['name'];
+
+const TOGGLE: Record<FormatName, (e: Editor) => boolean> = {
+  bold: (e) => e.chain().focus().toggleBold().run(),
+  italic: (e) => e.chain().focus().toggleItalic().run(),
+  strike: (e) => e.chain().focus().toggleStrike().run(),
+  bulletList: (e) => e.chain().focus().toggleBulletList().run(),
+  orderedList: (e) => e.chain().focus().toggleOrderedList().run(),
+  blockquote: (e) => e.chain().focus().toggleBlockquote().run(),
+};
+
+/** Formatting toggles in the title bar; highlighted when the selection already has the format. */
+function FormatButtons({ editor }: { editor: Editor | null }) {
+  const active = useEditorState({
+    editor,
+    selector: (ctx) => Object.fromEntries(FORMATS.map((f) => [f.name, ctx.editor?.isActive(f.name) ?? false])),
+  });
+  return (
+    <span className="titlebar-tools">
+      {FORMATS.map((f) => (
+        <button
+          key={f.name}
+          className={`titlebar-btn ${active?.[f.name] ? 'active' : ''}`}
+          title={f.title}
+          style={f.style}
+          onMouseDown={(e) => e.preventDefault()} // keep the editor's selection
+          onClick={() => editor && TOGGLE[f.name](editor)}
+        >
+          {f.label}
+        </button>
+      ))}
+    </span>
   );
 }
 
