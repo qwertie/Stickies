@@ -46,7 +46,8 @@ need the packages listed in `.github/workflows/build.yml` under "Linux build dep
   New notes appear on the right side of the screen, each 200 px below the previous one.
 - **Titles:** a note's first line (up to 60 characters) is its window title, shown in the title bar,
   the taskbar and Alt+Tab.
-- **Formatting:** the title bar has buttons for bold, italic, strikethrough, bulleted and numbered
+- **Formatting:** the title bar has a paragraph-style dropdown (Normal, Heading 1 to 3, Pre) and
+  buttons for bold, italic, strikethrough, bulleted and numbered
   lists and quotations; the usual shortcuts (Ctrl+B, Ctrl+I, and so on) work too, as does Markdown
   syntax typed directly (`# `, `- `, `> `).
 - **Right-click a note** for everything else: speak the note (or just the selected text),

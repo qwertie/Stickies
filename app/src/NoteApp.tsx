@@ -257,18 +257,45 @@ const TOGGLE: Record<FormatName, (e: Editor) => boolean> = {
   blockquote: (e) => e.chain().focus().toggleBlockquote().run(),
 };
 
-/** Formatting toggles in the title bar; highlighted when the selection already has the format. */
+const BLOCK_STYLES = [
+  { id: 'p', label: 'Normal', apply: (e: Editor) => e.chain().focus().setParagraph().run() },
+  { id: 'h1', label: 'Heading 1', apply: (e: Editor) => e.chain().focus().setHeading({ level: 1 }).run() },
+  { id: 'h2', label: 'Heading 2', apply: (e: Editor) => e.chain().focus().setHeading({ level: 2 }).run() },
+  { id: 'h3', label: 'Heading 3', apply: (e: Editor) => e.chain().focus().setHeading({ level: 3 }).run() },
+  { id: 'pre', label: 'Pre', apply: (e: Editor) => e.chain().focus().setCodeBlock().run() },
+];
+
+function currentBlockStyle(e: Editor): string {
+  if (e.isActive('codeBlock')) {
+    return 'pre';
+  }
+  const level = [1, 2, 3].find((l) => e.isActive('heading', { level: l }));
+  return level ? `h${level}` : 'p';
+}
+
+/** Formatting controls in the title bar; highlighted when the selection already has the format. */
 function FormatButtons({ editor }: { editor: Editor | null }) {
   const active = useEditorState({
     editor,
-    selector: (ctx) => Object.fromEntries(FORMATS.map((f) => [f.name, ctx.editor?.isActive(f.name) ?? false])),
+    selector: (ctx) => ({
+      block: ctx.editor ? currentBlockStyle(ctx.editor) : 'p',
+      marks: Object.fromEntries(FORMATS.map((f) => [f.name, ctx.editor?.isActive(f.name) ?? false])) as Record<FormatName, boolean>,
+    }),
   });
   return (
     <span className="titlebar-tools">
+      <select
+        className="titlebar-select"
+        title="Paragraph style"
+        value={active?.block ?? 'p'}
+        onChange={(ev) => editor && BLOCK_STYLES.find((s) => s.id === ev.target.value)?.apply(editor)}
+      >
+        {BLOCK_STYLES.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
+      </select>
       {FORMATS.map((f) => (
         <button
           key={f.name}
-          className={`titlebar-btn ${active?.[f.name] ? 'active' : ''}`}
+          className={`titlebar-btn ${active?.marks[f.name] ? 'active' : ''}`}
           title={f.title}
           style={f.style}
           onMouseDown={(e) => e.preventDefault()} // keep the editor's selection

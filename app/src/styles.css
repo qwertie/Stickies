@@ -261,6 +261,22 @@ body {
   font-size: 12px;
 }
 
+.titlebar-select {
+  height: 16px;
+  margin: 0 2px;
+  padding: 0;
+  border: 0;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.25);
+  color: rgba(0, 0, 0, 0.7);
+  font: 10px 'Segoe UI', sans-serif;
+  cursor: pointer;
+}
+
+.titlebar-select:hover {
+  background: rgba(255, 255, 255, 0.5);
+}
+
 .titlebar-tools .titlebar-btn.active {
   background: rgba(0, 0, 0, 0.18);
   color: #000;
