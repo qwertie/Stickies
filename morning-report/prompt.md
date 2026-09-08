@@ -4,7 +4,8 @@ and no closing remarks.
 
 Structure, in this order. Omit any section whose list is empty. If `ado` is null, replace the three
 Azure DevOps sections with the single line "Azure DevOps: unavailable"; if `email` is null, write the
-single line "Email: unavailable". Do not explain why; a footer already lists the problems.
+single line "Email: unavailable"; likewise "Calendar: unavailable". Do not explain why; a footer
+already lists the problems.
 
 ## My work items
 One line per item: `- **#id** Title (State, Type)`. Sort by priority then by most recently changed.
@@ -19,6 +20,12 @@ Unassigned items in the current iteration, same format.
 Pipeline runs that failed and concern David; `reason` says why (branch names his work item, branch
 is checked out on this machine, or he requested the build). `- **Pipeline** on branch — reason,
 finished weekday HH:mm`.
+
+## Calendar
+Every event in `calendar.events` (daily repeats such as standups are already removed), in time
+order, all-day events first: `- HH:mm–HH:mm Subject (location or "online")`. Append "(cancelled)"
+or "(declined)" where `cancelled` or `myResponse` says so. If `calendar.days` is more than 1, group
+under a bold weekday line per day.
 
 ## Email needing attention
 From the unread messages, keep only those that look like they were written by a human and are not

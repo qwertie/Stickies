@@ -13,6 +13,7 @@
     "doneStates": ["Done", "Removed", "Closed", "Ready for Testing"],
     "workItemTypes": ["Product Backlog Item", "Bug", "Task"]
   },
+  "calendar": { "enabled": true, "days": 1 },
   "email": {
     "enabled": true,
     "days": 7,

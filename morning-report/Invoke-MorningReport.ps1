@@ -209,6 +209,8 @@ function Get-EmailData {
     }
     Import-Module Microsoft.Graph.Authentication
     try {
+        # Only the scope the cached token is sure to have; asking for more would open a browser,
+        # which a hidden scheduled task cannot do. Get-CalendarData checks for Calendars.Read.
         Connect-MgGraph -Scopes 'Mail.Read' -NoWelcome | Out-Null
     } catch {
         Add-Failure 'Email' "Connect-MgGraph failed: $($_.Exception.Message). Run the script once interactively to sign in."
@@ -238,6 +240,46 @@ function Get-EmailData {
         }
     }
     return [pscustomobject]@{ account = $myAddress; unreadDays = $mail.days; messages = $kept; preFilteredOut = $skipped }
+}
+
+# ---------------------------------------------------------------- calendar via Graph
+# Today's (and optionally the next days') appointments, minus events that repeat every working
+# day, such as a standup. Uses the Graph session Get-EmailData opened.
+function Get-CalendarData {
+    $cal = $config.calendar
+    if (-not $cal -or -not $cal.enabled) { return $null }
+    $ctx = Get-MgContext
+    if (-not $ctx) { return $null }   # email already reported why Graph is unavailable
+    if ($ctx.Scopes -notcontains 'Calendars.Read') {
+        Add-Failure 'Calendar' 'needs consent once: run  Connect-MgGraph -Scopes Mail.Read,Calendars.Read  in a terminal'
+        return $null
+    }
+    $tz = (Get-TimeZone).Id
+    $start = (Get-Date).Date
+    $end = $start.AddDays([Math]::Max(1, [int]$cal.days))
+    $select = 'subject,start,end,location,organizer,isAllDay,isCancelled,type,seriesMasterId,responseStatus,onlineMeeting,webLink'
+    $uri = "https://graph.microsoft.com/v1.0/me/calendarView?startDateTime=$($start.ToString('o'))&endDateTime=$($end.ToString('o'))&`$select=$select&`$orderby=start/dateTime&`$top=100"
+    $headers = @{ Prefer = "outlook.timezone=`"$tz`"" }
+    $events = (Invoke-MgGraphRequest -Method GET -Uri $uri -Headers $headers -OutputType PSObject).value
+
+    $masters = @{}
+    $kept = @(); $skippedDaily = 0
+    foreach ($e in $events) {
+        if ($e.seriesMasterId) {
+            if (-not $masters.ContainsKey($e.seriesMasterId)) {
+                $m = Invoke-MgGraphRequest -Method GET -Uri "https://graph.microsoft.com/v1.0/me/events/$($e.seriesMasterId)?`$select=recurrence" -OutputType PSObject
+                $pattern = $m.recurrence.pattern
+                $masters[$e.seriesMasterId] = ($pattern.type -eq 'daily') -or ($pattern.type -eq 'weekly' -and @($pattern.daysOfWeek).Count -ge 5)
+            }
+            if ($masters[$e.seriesMasterId]) { $skippedDaily++; continue }
+        }
+        $kept += [pscustomobject]@{
+            subject = $e.subject; start = $e.start.dateTime; end = $e.end.dateTime; allDay = $e.isAllDay
+            cancelled = $e.isCancelled; location = $e.location.displayName; online = [bool]$e.onlineMeeting
+            organizer = $e.organizer.emailAddress.name; myResponse = $e.responseStatus.response; link = $e.webLink
+        }
+    }
+    return [pscustomobject]@{ from = $start.ToString('yyyy-MM-dd'); days = [int]$cal.days; timeZone = $tz; events = $kept; skippedDailyRepeats = $skippedDaily }
 }
 
 # ---------------------------------------------------------------- report generation
@@ -296,6 +338,13 @@ function Format-Fallback($raw) {
         foreach ($p in $raw.ado.prsAwaitingMyReview) { [void]$sb.AppendLine("- **!$($p.id)** $($p.title) - $($p.repo), by $($p.author)") }
         [void]$sb.AppendLine("`n## Failed builds")
         foreach ($b in $raw.ado.failedBuilds) { [void]$sb.AppendLine("- **$($b.pipeline)** on $($b.branch) ($($b.reason))") }
+    }
+    if ($raw.calendar) {
+        [void]$sb.AppendLine("`n## Calendar")
+        foreach ($e in $raw.calendar.events) {
+            $when = if ($e.allDay) { 'all day' } else { '{0:HH:mm}-{1:HH:mm}' -f [datetime]$e.start, [datetime]$e.end }
+            [void]$sb.AppendLine("- $when $($e.subject)$(if ($e.cancelled) { ' (cancelled)' })")
+        }
     }
     if ($raw.email) {
         [void]$sb.AppendLine("`n## Unread email (pre-filtered only)")
@@ -380,9 +429,11 @@ for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
         worktrees = @(Get-Worktrees)
         ado = $null
         email = $null
+        calendar = $null
     }
     try { $raw.ado = Get-AdoData -Worktrees $raw.worktrees } catch { Add-Failure 'Azure DevOps' $_.Exception.Message }
     try { $raw.email = Get-EmailData } catch { Add-Failure 'Email' $_.Exception.Message }
+    try { $raw.calendar = Get-CalendarData } catch { Add-Failure 'Calendar' $_.Exception.Message }
     $transient = @($script:Failures | Where-Object { $_ -match 'remote name could not be resolved|Unable to connect|timed out|\(50[0-9]\)|network' })
     if (-not $transient -or $attempt -eq $maxAttempts) { break }
     Write-Log "Attempt $attempt hit a transient failure; retrying in 3 minutes: $($transient -join '; ')"

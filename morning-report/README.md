@@ -15,6 +15,8 @@ The report contains:
   so a failure that was fixed by a later successful run is not listed
 - Unread Outlook mail from the last week, triaged by Claude so only mail from real people, or mail
   that clearly needs you, is listed
+- Today's calendar (`calendar.days` for more days), leaving out anything that repeats every working
+  day, such as a standup
 - Every git worktree of your configured repositories with its branch; T3 Code worktrees are marked
 
 ## One-time setup
@@ -67,8 +69,11 @@ after it, Windows keeps a refresh token so the 4 AM run works without you. The s
 
 ```powershell
 Install-Module Microsoft.Graph.Authentication -Scope CurrentUser   # if not already installed
-Connect-MgGraph -Scopes Mail.Read
+Connect-MgGraph -Scopes Mail.Read,Calendars.Read
 ```
+
+Both scopes are read-only. If the calendar section later says it "needs consent", run that same
+command again; the scheduled run deliberately never opens a browser for consent itself.
 
 A browser window opens for your work account. If your organization blocks user consent you will
 see an "approval required" page; ask an administrator to approve the "Microsoft Graph Command Line
