@@ -38,6 +38,7 @@ export function NoteApp({ folder }: { folder: string }) {
   const [meta, setMetaState] = useState<NoteMeta>({});
   const [defaults, setDefaults] = useState<Defaults>({ color: DEFAULT_COLOR, font: 'Segoe UI', fontSize: 14 });
   const [loaded, setLoaded] = useState(false);
+  const [title, setTitle] = useState('');
   const metaRef = useRef<NoteMeta>({});
   const lastSaved = useRef('');
   const saveTimer = useRef<number | undefined>(undefined);
@@ -67,9 +68,17 @@ export function NoteApp({ folder }: { folder: string }) {
       if (content !== lastSaved.current) {
         lastSaved.current = content;
         void invoke('write_note', { folder, content });
+        updateTitle(editor);
       }
     }
   }, [editor, folder, loaded]);
+
+  /** Window title = the note's first words, so the taskbar and Alt+Tab show which note is which. */
+  const updateTitle = (e: Editor) => {
+    const text = titleOf(e.getText());
+    setTitle(text);
+    void getCurrentWindow().setTitle(text || 'Sticky');
+  };
 
   const scheduleSave = useCallback(() => {
     window.clearTimeout(saveTimer.current);
@@ -83,6 +92,9 @@ export function NoteApp({ folder }: { folder: string }) {
       setMetaState(parsed.meta);
       editor?.commands.setContent(parsed.body, { contentType: 'markdown', emitUpdate: false });
       lastSaved.current = text;
+      if (editor) {
+        updateTitle(editor);
+      }
     },
     [editor],
   );
@@ -216,7 +228,7 @@ export function NoteApp({ folder }: { folder: string }) {
       <div className="titlebar" data-tauri-drag-region style={{ background: darken(color) }}>
         <button className="titlebar-btn" title="New note (Ctrl+N)" onClick={() => void invoke('create_note')}>+</button>
         <FormatButtons editor={editor} />
-        <span className="titlebar-title" data-tauri-drag-region />
+        <span className="titlebar-title" data-tauri-drag-region title={title}>{title}</span>
 
         <button className="titlebar-btn" title="Close (archive for 30 days)" onClick={closeNote}>×</button>
       </div>
@@ -267,6 +279,13 @@ function FormatButtons({ editor }: { editor: Editor | null }) {
       ))}
     </span>
   );
+}
+
+const TITLE_LENGTH = 60;
+
+function titleOf(text: string): string {
+  const firstLine = text.split('\n').map((l) => l.trim()).find((l) => l.length > 0) ?? '';
+  return firstLine.length > TITLE_LENGTH ? `${firstLine.slice(0, TITLE_LENGTH - 1).trimEnd()}…` : firstLine;
 }
 
 function preventDefault(event: Event): boolean {

@@ -44,6 +44,8 @@ need the packages listed in `.github/workflows/build.yml` under "Linux build dep
 
 - **Make a note:** click **+** in a note's title bar, press **Ctrl+N**, or use the tray icon.
   New notes appear on the right side of the screen, each 200 px below the previous one.
+- **Titles:** a note's first line (up to 60 characters) is its window title, shown in the title bar,
+  the taskbar and Alt+Tab.
 - **Formatting:** the title bar has buttons for bold, italic, strikethrough, bulleted and numbered
   lists and quotations; the usual shortcuts (Ctrl+B, Ctrl+I, and so on) work too, as does Markdown
   syntax typed directly (`# `, `- `, `> `).
