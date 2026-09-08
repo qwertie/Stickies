@@ -322,6 +322,7 @@ fn spawn_monitor_poll(app: AppHandle) {
                 last = now;
                 windows::clamp_all(&app);
             }
+            windows::keep_corner_on_top(&app);
         }
     });
 }

@@ -273,8 +273,12 @@ function Get-CalendarData {
             }
             if ($masters[$e.seriesMasterId]) { $skippedDaily++; continue }
         }
+        # Windows PowerShell's JSON parser turns ISO strings into DateTime and re-serializes them
+        # as epoch milliseconds, which reads as UTC. Emit unambiguous local wall-clock strings.
         $kept += [pscustomobject]@{
-            subject = $e.subject; start = $e.start.dateTime; end = $e.end.dateTime; allDay = $e.isAllDay
+            subject = $e.subject; allDay = $e.isAllDay
+            start = ([datetime]$e.start.dateTime).ToString('yyyy-MM-dd HH:mm'); end = ([datetime]$e.end.dateTime).ToString('yyyy-MM-dd HH:mm')
+            timeZone = $e.start.timeZone
             cancelled = $e.isCancelled; location = $e.location.displayName; online = [bool]$e.onlineMeeting
             organizer = $e.organizer.emailAddress.name; myResponse = $e.responseStatus.response; link = $e.webLink
         }

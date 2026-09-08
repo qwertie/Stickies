@@ -76,6 +76,15 @@ pub fn raise_all(app: &AppHandle) {
         w.set_always_on_top(true).ok();
         w.set_always_on_top(false).ok();
     }
+    keep_corner_on_top(app);
+}
+
+/// Re-asserts the dot's topmost status. Other topmost windows (and our own notes while they are
+/// briefly pinned) can end up above it; asking again puts it back at the top of the topmost band.
+pub fn keep_corner_on_top(app: &AppHandle) {
+    if let Some(corner) = app.get_webview_window(CORNER_LABEL) {
+        corner.set_always_on_top(true).ok();
+    }
 }
 
 /// Raises the note the user focused most recently, or the newest note if none has been focused.
@@ -90,6 +99,7 @@ pub fn focus_latest(app: &AppHandle) {
         w.set_always_on_top(false).ok();
         w.set_focus().ok();
     }
+    keep_corner_on_top(app);
 }
 
 pub fn open_corner(app: &AppHandle) -> Result<(), String> {

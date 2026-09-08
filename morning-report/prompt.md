@@ -23,7 +23,8 @@ finished weekday HH:mm`.
 
 ## Calendar
 Every event in `calendar.events` (daily repeats such as standups are already removed), in time
-order, all-day events first: `- HH:mm–HH:mm Subject (location or "online")`. Append "(cancelled)"
+order, all-day events first: `- HH:mm–HH:mm Subject (location or "online")`. `start` and `end` are
+already in David's local time zone; copy the clock times exactly, never convert them. Append "(cancelled)"
 or "(declined)" where `cancelled` or `myResponse` says so. If `calendar.days` is more than 1, group
 under a bold weekday line per day.
 
