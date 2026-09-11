@@ -4,7 +4,7 @@ import { getCurrentWebview } from '@tauri-apps/api/webview';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import type { Editor } from '@tiptap/core';
 import { EditorContent, useEditor, useEditorState } from '@tiptap/react';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 
 import { setNoteDir } from './assets';
 import { copySelection, dropFiles, handlePaste, openAttachmentAt, pasteFromMenu } from './editor/clipboard';
@@ -273,6 +273,49 @@ function currentBlockStyle(e: Editor): string {
   return level ? `h${level}` : 'p';
 }
 
+/** The title (drag region) never shrinks below this, so the note stays draggable. */
+const MIN_DRAG_WIDTH = 80;
+
+/**
+ * Number of leading children of the tools element that fit in the title bar while leaving
+ * MIN_DRAG_WIDTH for the title; the rest are dropped from the right. Widths are cached as they are
+ * measured, since a hidden child reports zero width.
+ */
+function useFittingTools(count: number): [React.RefObject<HTMLSpanElement | null>, number] {
+  const tools = useRef<HTMLSpanElement>(null);
+  const widths = useRef<number[]>([]);
+  const [shown, setShown] = useState(count);
+
+  useLayoutEffect(() => {
+    const el = tools.current;
+    const bar = el?.parentElement;
+    if (!el || !bar) return;
+    const measure = () => {
+      Array.from(el.children).forEach((child, i) => {
+        const width = (child as HTMLElement).offsetWidth;
+        if (width > 0) widths.current[i] = width;
+      });
+      // Everything in the bar except the tools and the title itself (the +/× buttons) is fixed.
+      let room = Array.from(bar.children).reduce(
+        (space, child) => (child === el || child.classList.contains('titlebar-title') ? space : space - (child as HTMLElement).offsetWidth),
+        bar.clientWidth - MIN_DRAG_WIDTH,
+      );
+      let fit = 0;
+      while (fit < count && room >= (widths.current[fit] ?? 0)) {
+        room -= widths.current[fit] ?? 0;
+        fit++;
+      }
+      setShown(fit);
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(bar);
+    return () => observer.disconnect();
+  }, [count]);
+
+  return [tools, shown];
+}
+
 /** Formatting controls in the title bar; highlighted when the selection already has the format. */
 function FormatButtons({ editor }: { editor: Editor | null }) {
   const active = useEditorState({
@@ -282,22 +325,25 @@ function FormatButtons({ editor }: { editor: Editor | null }) {
       marks: Object.fromEntries(FORMATS.map((f) => [f.name, ctx.editor?.isActive(f.name) ?? false])) as Record<FormatName, boolean>,
     }),
   });
+  const [tools, shown] = useFittingTools(FORMATS.length + 1);
+  const hideBeyond = (index: number) => (index < shown ? undefined : { display: 'none' });
   return (
-    <span className="titlebar-tools">
+    <span className="titlebar-tools" ref={tools}>
       <select
         className="titlebar-select"
         title="Paragraph style"
+        style={hideBeyond(0)}
         value={active?.block ?? 'p'}
         onChange={(ev) => editor && BLOCK_STYLES.find((s) => s.id === ev.target.value)?.apply(editor)}
       >
         {BLOCK_STYLES.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
       </select>
-      {FORMATS.map((f) => (
+      {FORMATS.map((f, i) => (
         <button
           key={f.name}
           className={`titlebar-btn ${active?.marks[f.name] ? 'active' : ''}`}
           title={f.title}
-          style={f.style}
+          style={{ ...f.style, ...hideBeyond(i + 1) }}
           onMouseDown={(e) => e.preventDefault()} // keep the editor's selection
           onClick={() => editor && TOGGLE[f.name](editor)}
         >
