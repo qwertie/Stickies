@@ -83,7 +83,7 @@ pub fn run() {
             open_in_explorer,
             save_layout,
             raise_all,
-            focus_latest,
+            raise_latest,
             get_settings,
             save_settings,
             open_options,
@@ -302,9 +302,10 @@ fn raise_all(app: AppHandle) {
     windows::raise_all(&app);
 }
 
+/// The corner dot's hover gesture: raise, but leave the keyboard where it was.
 #[tauri::command]
-fn focus_latest(app: AppHandle) {
-    windows::focus_latest(&app);
+fn raise_latest(app: AppHandle) {
+    windows::raise_latest(&app, false);
 }
 
 #[tauri::command]

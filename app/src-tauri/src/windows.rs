@@ -88,7 +88,9 @@ pub fn keep_corner_on_top(app: &AppHandle) {
 }
 
 /// Raises the note the user focused most recently, or the newest note if none has been focused.
-pub fn focus_latest(app: &AppHandle) {
+/// `focus` is false for the corner dot's hover gesture: merely sweeping the pointer past the
+/// corner should not pull the keyboard away from whatever the user is typing in.
+pub fn raise_latest(app: &AppHandle, focus: bool) {
     let state = app.state::<AppState>();
     let last = state.last_focused.lock().unwrap().clone();
     let window = last
@@ -97,7 +99,9 @@ pub fn focus_latest(app: &AppHandle) {
     if let Some(w) = window {
         w.set_always_on_top(true).ok();
         w.set_always_on_top(false).ok();
-        w.set_focus().ok();
+        if focus {
+            w.set_focus().ok();
+        }
     }
     keep_corner_on_top(app);
 }
@@ -187,7 +191,7 @@ pub fn handle_app_menu(app: &AppHandle, id: &str) {
             crate::create_and_open(app).ok();
         }
         "show" => raise_all(app),
-        "latest" => focus_latest(app),
+        "latest" => raise_latest(app, true),
         "folder" => {
             let dir = app.state::<AppState>().store.data_dir.clone();
             tauri_plugin_opener::open_path(dir, None::<&str>).ok();
