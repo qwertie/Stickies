@@ -287,10 +287,12 @@ async fn show_app_menu(app: AppHandle, window: tauri::Window) -> Result<(), Stri
 }
 
 /// Records where the user put a window. Moves the app made itself (clamping) are ignored so the
-/// saved rect stays the user's intended "home" position.
+/// saved rect stays the user's intended "home" position. So is a minimized window's rect, which
+/// on Windows is a 160x28 placeholder at (-32000, -32000).
 #[tauri::command]
-fn save_layout(state: State<AppState>, folder: String, x: i32, y: i32, w: u32, h: u32) {
-    if Instant::now() >= *state.programmatic_moves_until.lock().unwrap() {
+fn save_layout(window: tauri::Window, state: State<AppState>, folder: String, x: i32, y: i32, w: u32, h: u32) {
+    let minimized = window.is_minimized().unwrap_or(false);
+    if !minimized && Instant::now() >= *state.programmatic_moves_until.lock().unwrap() {
         layout::update(|l| {
             l.windows.insert(folder, Rect { x, y, w, h });
         });
