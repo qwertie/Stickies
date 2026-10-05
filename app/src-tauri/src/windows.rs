@@ -51,6 +51,7 @@ pub fn open_note(app: &AppHandle, folder: &str) -> Result<WebviewWindow, String>
         .initialization_script(&init)
         .build()
         .map_err(|e| e.to_string())?;
+    set_outer_size(&window, rect.w, rect.h);
     if stored.is_none() {
         layout::update(|l| {
             l.windows.insert(folder.to_string(), home);
@@ -246,7 +247,7 @@ pub fn clamp_all(app: &AppHandle) {
         let home = labels.get(w.label()).and_then(|f| layout.windows.get(f)).cloned();
         let target = place(app, &home.unwrap_or(Placement { rect: current, screen: None }));
         if target.x != current.x || target.y != current.y || target.w != current.w || target.h != current.h {
-            w.set_size(LogicalSize::new(target.w, target.h)).ok();
+            set_outer_size(&w, target.w, target.h);
             w.set_position(LogicalPosition::new(target.x, target.y)).ok();
         }
     }
@@ -323,6 +324,17 @@ fn rescale_axis(pos: i32, size: u32, (from, from_len): (i32, u32), (to, to_len):
     let fraction = if slack > 0.0 { ((pos - from) as f64 / slack).clamp(0.0, 1.0) } else { 0.0 };
     let size = size.min(to_len);
     (to + (fraction * (to_len - size) as f64).round() as i32, size)
+}
+
+/// Layout rects are outer rects, but the builder and `set_size` size the client area; on Windows
+/// the two differ by the invisible resize borders, which made notes grow on every restart.
+fn set_outer_size(window: &WebviewWindow, w: u32, h: u32) {
+    let scale = window.scale_factor().unwrap_or(1.0);
+    if let (Ok(outer), Ok(inner)) = (window.outer_size(), window.inner_size()) {
+        let border_w = outer.width.saturating_sub(inner.width) as f64 / scale;
+        let border_h = outer.height.saturating_sub(inner.height) as f64 / scale;
+        window.set_size(LogicalSize::new(w as f64 - border_w, h as f64 - border_h)).ok();
+    }
 }
 
 /// Clamps into the work area of the monitor containing the rect's top-left, or the primary
