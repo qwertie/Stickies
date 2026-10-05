@@ -8,7 +8,7 @@ use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{AppHandle, LogicalPosition, LogicalSize, Manager, Monitor, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
 
-use crate::layout::{self, Rect};
+use crate::layout::{self, Placement, Rect, Screen};
 use crate::AppState;
 
 pub const NOTE_SIZE: u32 = 500;
@@ -34,9 +34,9 @@ pub fn open_note(app: &AppHandle, folder: &str) -> Result<WebviewWindow, String>
         return Ok(existing);
     }
     app.state::<AppState>().labels.lock().unwrap().insert(label.clone(), folder.to_string());
-    let stored = layout::load().windows.get(folder).copied();
-    let home = stored.unwrap_or_else(|| next_rect(app));
-    let rect = clamp_to_screen(app, home);
+    let stored = layout::load().windows.get(folder).cloned();
+    let home = stored.clone().unwrap_or_else(|| next_placement(app));
+    let rect = place(app, &home);
     let init = format!(
         "window.__STICKIES__ = {{ folder: {}, label: {} }};",
         serde_json::to_string(folder).unwrap(),
@@ -228,10 +228,10 @@ pub fn build_tray(app: &AppHandle) -> tauri::Result<()> {
     Ok(())
 }
 
-/// Re-places every note window from its saved "home" rect, clamped to the monitors that exist
-/// now. After a resolution drop the notes are pulled on screen; when the original arrangement
-/// returns they go back where the user left them, because the saved rect is never overwritten by
-/// these moves (see `save_layout`).
+/// Re-places every note window from its saved "home" placement onto the monitors that exist now
+/// (see `place`). After a resolution drop the notes are pulled on screen; when the original
+/// arrangement returns they go back where the user left them, because the saved rect is never
+/// overwritten by these moves (see `save_layout`).
 pub fn clamp_all(app: &AppHandle) {
     let state = app.state::<AppState>();
     *state.programmatic_moves_until.lock().unwrap() = Instant::now() + Duration::from_millis(1500);
@@ -243,8 +243,8 @@ pub fn clamp_all(app: &AppHandle) {
         let pos = pos.to_logical::<i32>(scale);
         let size = size.to_logical::<u32>(scale);
         let current = Rect { x: pos.x, y: pos.y, w: size.width, h: size.height };
-        let home = labels.get(w.label()).and_then(|f| layout.windows.get(f)).copied().unwrap_or(current);
-        let target = clamp_to_screen(app, home);
+        let home = labels.get(w.label()).and_then(|f| layout.windows.get(f)).cloned();
+        let target = place(app, &home.unwrap_or(Placement { rect: current, screen: None }));
         if target.x != current.x || target.y != current.y || target.w != current.w || target.h != current.h {
             w.set_size(LogicalSize::new(target.w, target.h)).ok();
             w.set_position(LogicalPosition::new(target.x, target.y)).ok();
@@ -279,8 +279,9 @@ pub fn monitor_signature(app: &AppHandle) -> String {
 
 /// Left or right edge of the primary work area (per settings), TOP_MARGIN down, stepping
 /// SLOT_STEP per new note and wrapping to the top when the next slot would run off the bottom.
-fn next_rect(app: &AppHandle) -> Rect {
-    let area = primary_work_area(app);
+fn next_placement(app: &AppHandle) -> Placement {
+    let screen = primary_screen(app);
+    let area = screen.area;
     let on_left = app.state::<AppState>().store.config().new_note_side == "left";
     let mut rect = Rect { x: 0, y: 0, w: NOTE_SIZE, h: NOTE_SIZE };
     layout::update(|l| {
@@ -293,7 +294,35 @@ fn next_rect(app: &AppHandle) -> Rect {
         rect.x = if on_left { area.x } else { area.x + area.w as i32 - NOTE_SIZE as i32 };
         rect.y = area.y + y;
     });
-    rect
+    Placement { rect, screen: Some(screen) }
+}
+
+/// Where a saved placement goes on the current monitors: proportionally the same spot on the same
+/// monitor, or on the primary one if that monitor is gone, so a note flush against the right edge
+/// stays there after a resolution change. Sizes stay in logical pixels, shrunk only to fit.
+fn place(app: &AppHandle, home: &Placement) -> Rect {
+    match &home.screen {
+        Some(screen) => {
+            let area = monitor_named(app, &screen.monitor).map(|m| logical_work_area(&m));
+            rescale(home.rect, &screen.area, &area.unwrap_or_else(|| primary_work_area(app)))
+        }
+        None => clamp_to_screen(app, home.rect),
+    }
+}
+
+/// Maps a rect between work areas, keeping its position on each axis as the same fraction of the
+/// free space (0 = flush left/top, 1 = flush right/bottom). The result lies within `to`.
+fn rescale(rect: Rect, from: &Rect, to: &Rect) -> Rect {
+    let (x, w) = rescale_axis(rect.x, rect.w, (from.x, from.w), (to.x, to.w));
+    let (y, h) = rescale_axis(rect.y, rect.h, (from.y, from.h), (to.y, to.h));
+    Rect { x, y, w, h }
+}
+
+fn rescale_axis(pos: i32, size: u32, (from, from_len): (i32, u32), (to, to_len): (i32, u32)) -> (i32, u32) {
+    let slack = from_len as f64 - size as f64;
+    let fraction = if slack > 0.0 { ((pos - from) as f64 / slack).clamp(0.0, 1.0) } else { 0.0 };
+    let size = size.min(to_len);
+    (to + (fraction * (to_len - size) as f64).round() as i32, size)
 }
 
 /// Clamps into the work area of the monitor containing the rect's top-left, or the primary
@@ -311,11 +340,23 @@ fn clamp_rect(mut rect: Rect, area: &Rect) -> Rect {
 }
 
 fn primary_work_area(app: &AppHandle) -> Rect {
+    primary_screen(app).area
+}
+
+fn primary_screen(app: &AppHandle) -> Screen {
     app.primary_monitor()
         .ok()
         .flatten()
-        .map(|m| logical_work_area(&m))
-        .unwrap_or(Rect { x: 0, y: 0, w: 1280, h: 720 })
+        .map(|m| screen_of(&m))
+        .unwrap_or(Screen { monitor: String::new(), area: Rect { x: 0, y: 0, w: 1280, h: 720 } })
+}
+
+pub fn screen_of(m: &Monitor) -> Screen {
+    Screen { monitor: m.name().cloned().unwrap_or_default(), area: logical_work_area(m) }
+}
+
+fn monitor_named(app: &AppHandle, name: &str) -> Option<Monitor> {
+    app.available_monitors().unwrap_or_default().into_iter().find(|m| m.name().is_some_and(|n| n == name))
 }
 
 fn work_area_for_point(app: &AppHandle, x: i32, y: i32) -> Rect {
@@ -333,4 +374,28 @@ fn logical_work_area(m: &Monitor) -> Rect {
     let pos = area.position.to_logical::<i32>(scale);
     let size = area.size.to_logical::<u32>(scale);
     Rect { x: pos.x, y: pos.y, w: size.width, h: size.height }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const BIG: Rect = Rect { x: 0, y: 0, w: 3840, h: 2100 };
+    const SMALL: Rect = Rect { x: 0, y: 0, w: 1920, h: 1040 };
+
+    #[test]
+    fn rescale_keeps_edges_and_fractions() {
+        let flush_right = Rect { x: 3840 - 400, y: 0, w: 400, h: 300 };
+        assert_eq!(rescale(flush_right, &BIG, &SMALL), Rect { x: 1920 - 400, y: 0, w: 400, h: 300 });
+        let centered = Rect { x: 1720, y: 900, w: 400, h: 300 };
+        assert_eq!(rescale(centered, &BIG, &SMALL), Rect { x: 760, y: 370, w: 400, h: 300 });
+    }
+
+    #[test]
+    fn rescale_is_identity_on_same_area_and_shrinks_to_fit() {
+        let r = Rect { x: 1234, y: 567, w: 400, h: 300 };
+        assert_eq!(rescale(r, &BIG, &BIG), r);
+        let huge = Rect { x: 100, y: 100, w: 3000, h: 1500 };
+        assert_eq!(rescale(huge, &BIG, &SMALL), SMALL);
+    }
 }

@@ -13,7 +13,7 @@ use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, State};
 use tauri_plugin_autostart::ManagerExt;
 
-use layout::Rect;
+use layout::{Placement, Rect};
 use store::{ArchivedInfo, Config, ImportedFile, Store};
 
 pub struct AppState {
@@ -293,8 +293,9 @@ async fn show_app_menu(app: AppHandle, window: tauri::Window) -> Result<(), Stri
 fn save_layout(window: tauri::Window, state: State<AppState>, folder: String, x: i32, y: i32, w: u32, h: u32) {
     let minimized = window.is_minimized().unwrap_or(false);
     if !minimized && Instant::now() >= *state.programmatic_moves_until.lock().unwrap() {
+        let screen = window.current_monitor().ok().flatten().map(|m| windows::screen_of(&m));
         layout::update(|l| {
-            l.windows.insert(folder, Rect { x, y, w, h });
+            l.windows.insert(folder, Placement { rect: Rect { x, y, w, h }, screen });
         });
     }
 }
