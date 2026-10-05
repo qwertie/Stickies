@@ -1,6 +1,6 @@
 [package]
 name = "stickies"
-version = "0.1.0"
+version = "0.1.1"
 description = "Sticky notes with a plain-folder data model"
 authors = ["David Piepgrass"]
 edition = "2021"
